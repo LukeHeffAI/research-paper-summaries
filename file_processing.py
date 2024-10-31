@@ -4,27 +4,37 @@
 ## - Creating PDF files from text strings
 
 import os
-from PyPDF2 import PdfFileReader, PdfFileWriter
+from PyPDF2 import PdfFileWriter
+import pdfplumber
 
 def get_pdf_filepaths(directory):
-    pdf_filepaths = []
-    for file in os.listdir(directory):
-        if file.endswith(".pdf"):
-            pdf_filepaths.append(os.path.join(directory, file))
-    return pdf_filepaths
+    pdf_titles = {}
+    for root, dirs, files in os.walk(directory):
+        for file in files:
+            if file.endswith(".pdf"):
+                pdf_titles[file] = os.path.join(root, file)
+
+    print(f"{len(pdf_titles)} PDF filepaths found")
+
+    return pdf_titles
 
 def read_pdf(filepath):
-    with open(filepath, "rb") as file:
-        pdf = PdfFileReader(file)
-        text = ""
-        for page_num in range(pdf.getNumPages()):
-            page = pdf.getPage(page_num)
-            text += page.extract_text()
-        return text
+    text = ""
+    with pdfplumber.open(filepath) as pdf:
+        for page in pdf.pages:
+            text += page.extract_text() or ""  # handle pages with no text gracefully
+    return text
     
-def create_pdf_from_text(text, output_filepath): # TODO: trial this function
-    pdf = PdfFileWriter()
-    pdf.addPage()
-    pdf.getPage(0).addText(text)
-    with open(output_filepath, "wb") as file:
-        pdf.write(file)
+# def create_pdf_from_text(text, output_filepath): # TODO: trial this function
+#     pdf = PdfFileWriter()
+#     pdf.addPage()
+#     pdf.getPage(0).addText(text)
+#     with open(output_filepath, "wb") as file:
+#         pdf.write(file)
+
+# pdf_titles = get_pdf_filepaths("documents")
+# print(pdf_titles.values())
+
+# for pdf_title, pdf_filepath in pdf_titles.items():
+#     text = read_pdf(pdf_filepath)
+#     print("\nAnalysing text from", pdf_title)
