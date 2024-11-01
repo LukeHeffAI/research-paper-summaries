@@ -3510,3 +3510,5 @@ research-summariser/Scripts/tqdm.exe
 research-summariser/Scripts/__pycache__/dumppdf.cpython-310.pyc
 research-summariser/Scripts/__pycache__/pdf2txt.cpython-310.pyc
 .gitignore
+main.py
+.gitignore
