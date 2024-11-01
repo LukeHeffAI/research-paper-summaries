@@ -19,7 +19,7 @@ def build_context_prompt():
     # Document details
     document_type = "Literature review"
     document_return_details = """
-    - Four sentence summary
+    - A summary of the overall document, of roughly 300 words
     - Key findings
     - Contributions to the field
     - Gaps remaining"""
