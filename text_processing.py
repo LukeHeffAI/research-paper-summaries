@@ -9,7 +9,7 @@ load_dotenv()
 openai.api_key = os.getenv("OPENAI_API_KEY")
 
 max_tokens = 4096
-model = "gpt-4o" # Use gpt-4o-mini for testing
+model = "gpt-4o-mini" # Use gpt-4o-mini for testing
 
 # Base class for handling different types of OpenAI text operations
 class OpenAITextProcessor:
@@ -58,8 +58,11 @@ class LaTeXConverter(OpenAITextProcessor):
     
     def convert_to_latex(self, text):
         system_content = "You are a helpful assistant."
-        user_content = "Convert the following series of research paper summaries into a LaTeX style document. Solely return the LaTeX content, no filler, language markers, or discussion. Add a contents page up at the start. Each paper should have a new page created for it. Use the name of each paper into the sections. Bold any text that was surrounded by asterisks and remove the asterisks. Make subsections and subsubsections as needed.\n\nThe text is as follows:\n\n" + text
+        user_content = "Convert the following series of research paper summaries into a LaTeX document. Solely return the LaTeX content; no filler, language markers, or discussion. Add a contents page at the start. Each paper should have a new page created for it. Use the name of each paper as sections. Bold any text that was surrounded by double asterisks ('**') and remove the asterisks. Make subsections and subsubsections as needed.\n\nThe text is as follows:\n\n" + text
         return self._create_response(system_content, user_content)
+
+
+
 
 # summariser = ResearchSummariser()
 # latex_converter = LaTeXConverter()
