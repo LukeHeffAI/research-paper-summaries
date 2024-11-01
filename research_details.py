@@ -20,6 +20,7 @@ def build_context_prompt():
     document_type = "Literature review"
     document_return_details = """
     - A summary of the overall document, of roughly 300 words
+    - What does "learning on-country" mean?
     - Key findings
     - Contributions to the field
     - Gaps remaining"""
