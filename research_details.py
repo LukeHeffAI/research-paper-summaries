@@ -1,10 +1,20 @@
-def vowel_check(text):
-    if text.startswith("a") or text.startswith("e") or text.startswith("i") or text.startswith("o") or text.startswith("u"):
-        return "an " + text
-    else:
-        return "a " + text
+from dataclasses import dataclass
 
-def build_context_prompt():
+@dataclass
+class ResearchContext:
+    research_field: str
+    research_topic: str
+    research_context: str
+    research_focus: str
+    document_type: str
+    document_return_details: str
+    document_intro: str
+
+
+def vowel_check(text):
+    return "an " + text if text[0].lower() in "aeiou" else "a " + text
+
+def build_context_prompt(user_context: ResearchContext):
     # Research details
     research_field = "Anthropology"
     research_topic = "Indigenous studies in Australia"
