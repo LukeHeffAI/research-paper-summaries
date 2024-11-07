@@ -10,7 +10,9 @@ def main():
 
     # Get all PDF filepaths from the "documents" directory
     print(f"Getting PDF filepaths. Time elapsed: {time.time() - start_time:.2f} seconds")
-    pdf_titles = get_pdf_filepaths("documents")
+    pdf_titles, pdf_count = get_pdf_filepaths("documents")
+    time_estimate = pdf_count * 30
+    print(f"{pdf_count} PDF files found. Estimated maximum processing time: {time_estimate} seconds")
 
     # Read the contents of each PDF file
     print(f"Reading PDF files. Time elapsed: {time.time() - start_time:.2f} seconds")
