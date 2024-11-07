@@ -12,9 +12,10 @@ def get_pdf_filepaths(directory):
             if file.endswith(".pdf"):
                 pdf_titles[file] = os.path.join(root, file)
 
-    print(f"{len(pdf_titles)} PDF filepaths found")
+    pdf_count = len(pdf_titles)
+    print(f"{pdf_count} PDF filepaths found")
 
-    return pdf_titles
+    return pdf_titles, pdf_count
 
 def read_pdf(filepath):
     text = ""
