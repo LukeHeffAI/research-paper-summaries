@@ -9,7 +9,7 @@ load_dotenv()
 openai.api_key = os.getenv("OPENAI_API_KEY")
 
 max_tokens = 4096
-model = "gpt-4o-mini" # Use gpt-4o-mini for testing
+model = "gpt-4o" # Use gpt-4o-mini for testing, gpt-4o for production
 
 # Base class for handling different types of OpenAI text operations
 class OpenAITextProcessor:

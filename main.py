@@ -36,9 +36,10 @@ def main():
         # Summarise the full text
         print(f"Summarising PDF {summarise_count}. Time elapsed: {time.time() - start_time:.2f} seconds")
         research_summary = research_summariser.summarise_text(full_text)
-        all_summaries += f"{pdf_title.split('.')[0]}:\n\n{research_summary}\n\n"
-        with open(f"summaries/{pdf_title.split('.')[0]}.txt", "w") as file:
-            file.write(research_summary.replace("\\u2",""))
+        all_summaries += f"{pdf_title.split('.')[0]}:\n\n{research_summary}"
+        with open(f"summaries/{pdf_title.split('.')[0]}.txt", "w", encoding="utf-8") as file:
+            file.write(research_summary)
+
         summarise_count += 1
 
     # Convert the summaries to a LaTeX file
@@ -47,7 +48,7 @@ def main():
     latex_text = latex_converter.convert_to_latex(all_summaries)
 
     # Save the LaTeX file
-    with open("Research-Summaries\main.tex", "w") as file:
+    with open("Research-Summaries\main.tex", "w", encoding="utf-8") as file:
         file.write(latex_text.replace("```", "").replace("latex", ""))
 
     print("Done! Time elapsed: {:.2f} seconds".format(time.time() - start_time))
