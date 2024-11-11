@@ -4,6 +4,12 @@
 
 This tool is designed to be a simple way for a user, especially one without coding skills, to engage with the latest AI technology to synthesise large amounts of information into short, easy to digest forms. The interface is yet to be decided, but the user will simply move large knowledge documents (e.g. research papers) into a folder or upload them to a website, and within a short amount of time have a document returned that provides summaries and other key information from the paper for them to use. Some of this information will be based on a user profile, while other information will be provided at run time to direct this particular task.
 
+### Future features
+
+- The tool will be able to provide a summary of the paper, including the key points and the main findings.
+- The tool will have a Zotero integration, so that users can easily import papers from their Zotero library.
+- The tool will be able to create an audio summary of the paper, similar to a podcast, so that users can listen to the summary while they are on the go.
+
 ## User profile
 
 ### Researchers
