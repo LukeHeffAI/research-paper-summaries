@@ -5,17 +5,24 @@ from research_details import ResearchContext, DocumentContext, load_json, build_
 from file_processing import get_pdf_filepaths, read_pdf
 from text_processing import LaTeXConverter, ResearchSummariser, CustomLLMCall
 
-def main(user: str = "luke", overwrite: bool = False):
+def main(user: str, overwrite: bool = False):
     # Start timer
     start_time = time.time()
 
+    # Check if user directory exists and create it and necessary files if not
+    if not os.path.exists(f"documents\{user}"):
+        os.makedirs(f"documents\{user}")
+        with open(f"documents\{user}\pdf_texts.json", "w", encoding="utf-8") as file:
+            file.write("{}")
+        raise FileNotFoundError(f"Directory 'documents\{user}' does not exist. Creating this directory for you now. Add your PDF files to this directory and run the script again.")
+
     # Get all PDF filepaths from the "documents" directory
     print(f"Getting PDF filepaths. Time elapsed: {time.time() - start_time:.2f} seconds")
-    pdf_titles = get_pdf_filepaths("documents")
+    pdf_titles = get_pdf_filepaths(f"documents\{user}")
 
     # Read the contents of each PDF file
     print(f"Reading PDF files. Time elapsed: {time.time() - start_time:.2f} seconds")
-    pdf_texts = load_json("documents\pdf_texts.json")
+    pdf_texts = load_json(f"documents\{user}\pdf_texts.json")
     pdf_count = 1
     for pdf_title, pdf_filepath in pdf_titles.items():
         print(f"Reading PDF {pdf_count}. Time elapsed: {time.time() - start_time:.2f} seconds")
@@ -24,7 +31,7 @@ def main(user: str = "luke", overwrite: bool = False):
             pdf_texts[pdf_title] = text
         pdf_count += 1
 
-    with open("documents\pdf_texts.json", "w", encoding="utf-8") as file:
+    with open("documents\{user}\pdf_texts.json", "w", encoding="utf-8") as file:
         file.write(json.dumps(pdf_texts))
 
     # Build the research context prompt
@@ -64,7 +71,7 @@ def main(user: str = "luke", overwrite: bool = False):
 
     # Create a filename for the LaTeX file
     print(f"Creating filename. Time elapsed: {time.time() - start_time:.2f} seconds")
-    filename = CustomLLMCall().llm_call("Create a filename for the file containing the following text. Do not return anything but the filename as this will be inserted straight into code used to modify the filename:\n\n" + latex_text)
+    filename = CustomLLMCall().llm_call("Create a filename for the file containing the following text. Do not return anything but the filename as this will be inserted straight into code used to modify the filename:\n\n" + all_summaries[:5000])
 
     # Save the LaTeX file
     with open("Research-Summaries\main.tex", "w", encoding="utf-8") as file:
@@ -73,7 +80,7 @@ def main(user: str = "luke", overwrite: bool = False):
     # Wait 20 seconds, then rename "main.tex" to f"{filename}.tex"
     print("Building summary report. Time elapsed: {:.2f} seconds. This should take roughly 30 seconds.".format(time.time() - start_time))
     time.sleep(20)
-    os.rename("Research-Summaries\main.tex", f"Research-Summaries\{filename}.tex")
+    os.rename("Research-Summaries\main.pdf", f"Research-Summaries\{filename}.pdf")
 
     print("Done! Time elapsed: {:.2f} seconds".format(time.time() - start_time))
 
