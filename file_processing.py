@@ -22,3 +22,23 @@ def read_pdf(filepath):
         for page in pdf.pages:
             text += page.extract_text() or ""
     return text
+
+def update_pdf_filenames(directory):
+    '''This function will update the filenames of PDFs in a directory based on the first line of text in the PDF. Especially useful as a heuristic when downloading PDFs from ArXiv or elsewhere on the web.'''
+    filenames = get_pdf_filepaths(directory)
+
+    for filename in filenames:
+        text = ""
+        with pdfplumber.open(f"{directory}\\" + filename) as pdf:
+            for page in pdf.pages:
+                text += page.extract_text() or ""
+
+        paper_title = text.split("\n")[0].replace(" ", "_").replace(":", "").replace(",", "").replace(";", "").replace(".", "").replace("?", "").replace("!", "").replace("'", "").replace('"', "").replace("[", "").replace("]", "").replace("{", "").replace("}", "").replace("/", "").replace("\\", "").replace("|", "").replace("<", "").replace(">", "").replace("=", "").replace("+", "").replace("*", "").replace("&", "").replace("^", "").replace("%", "").replace("#", "").replace("@", "").replace("`", "").replace("~", "") + ".pdf"
+
+        print(f"Current filename: {filename}. Suggested filename: {paper_title}")
+        confirmation = input(f"Replace filename?\n")
+        if confirmation == "y":
+            os.rename("documents\luke\\" + filename, "documents\luke\\" + paper_title)
+        else:
+            continue
+        
