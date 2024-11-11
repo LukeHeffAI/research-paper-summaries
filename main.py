@@ -10,20 +10,22 @@ def main(user: str, overwrite: bool = False):
     start_time = time.time()
 
     # Check if user directory exists and create it and necessary files if not
-    if not os.path.exists(f"documents\{user}"):
-        os.makedirs(f"documents\{user}")
-        with open(f"documents\{user}\pdf_texts.json", "w", encoding="utf-8") as file:
+    # TODO: Move this into a class method in a new class called "NewUserHandler"
+    if not os.path.exists(f"users\{user}"):
+        os.makedirs(f"users\{user}\documents")
+        os.makedirs(f"users\{user}\summaries")
+        with open(f"users\{user}\documents\pdf_texts.json", "w", encoding="utf-8") as file:
             file.write("{}")
-        raise FileNotFoundError(f"Directory 'documents\{user}' does not exist. Creating this directory for you now. Add your PDF files to this directory and run the script again.")
+        raise FileNotFoundError(f"Directory 'users\{user}\documents' does not exist. Creating this directory for you now. Add your PDF files to this directory and run the script again.")
 
     # Get all PDF filepaths from the "documents" directory
     print(f"Getting PDF filepaths. Time elapsed: {time.time() - start_time:.2f} seconds")
-    pdf_titles = get_pdf_filepaths(f"documents\{user}")
+    pdf_titles = get_pdf_filepaths(f"users\{user}\documents")
     print(f"{len(pdf_titles)} PDF filepaths found")
 
     # Read the contents of each PDF file
     print(f"Reading PDF files. Time elapsed: {time.time() - start_time:.2f} seconds")
-    pdf_texts = load_json(f"documents\{user}\pdf_texts.json")
+    pdf_texts = load_json(f"users\{user}\documents\pdf_texts.json")
     pdf_count = 1
     for pdf_title, pdf_filepath in pdf_titles.items():
         print(f"Reading PDF {pdf_count}. Time elapsed: {time.time() - start_time:.2f} seconds")
@@ -50,17 +52,16 @@ def main(user: str, overwrite: bool = False):
     for pdf_title, pdf_text in pdf_texts.items():
 
         # Summarise the full text
-
-        if pdf_title.split('.')[0] + ".txt" not in os.listdir("summaries") or overwrite:
+        if pdf_title.split('.')[0] + ".txt" not in os.listdir(f"users\{user}\summaries") or overwrite:
             print(f"Summarising PDF {summarise_count}. Time elapsed: {time.time() - start_time:.2f} seconds")
             full_text = f"{research_prompt}\n\n{pdf_text}"
             research_summary = research_summariser.summarise_text(full_text)
-            with open(f"summaries/{pdf_title.split('.')[0]}.txt", "w", encoding="utf-8") as file:
+            with open(f"users\{user}\summaries/{pdf_title.split('.')[0]}.txt", "w", encoding="utf-8") as file:
                 file.write(research_summary)
             all_summaries += f"{pdf_title.split('.')[0]}:\n\n{research_summary}\n\n"
         else:
             print(f"Reading existing summary for PDF {summarise_count}. Time elapsed: {time.time() - start_time:.2f} seconds")
-            with open(f"summaries/{pdf_title.split('.')[0]}.txt", "r", encoding="utf-8") as file:
+            with open(f"users\{user}\summaries/{pdf_title.split('.')[0]}.txt", "r", encoding="utf-8") as file:
                 research_summary = file.read()
             all_summaries += f"{pdf_title.split('.')[0]}:\n\n{research_summary}\n\n"
 
@@ -81,7 +82,7 @@ def main(user: str, overwrite: bool = False):
     # Wait 20 seconds, then rename "main.tex" to f"{filename}.tex"
     print("Building summary report. Time elapsed: {:.2f} seconds. This should take roughly 30 seconds.".format(time.time() - start_time))
     time.sleep(20)
-    os.rename("Research-Summaries\main.pdf", f"Research-Summaries\{filename}.pdf")
+    os.rename("Research-Summaries\main.pdf", f"users\{user}\summaries\{filename}.pdf")
 
     print("Done! Time elapsed: {:.2f} seconds".format(time.time() - start_time))
 
