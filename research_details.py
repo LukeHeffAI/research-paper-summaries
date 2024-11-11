@@ -38,14 +38,12 @@ def build_context_prompt(user_context: ResearchContext, document_context: Docume
 
     return prompt
 
-user = "luke"
+# user = "luke"
 
-research_data = load_json("data/research_data.json")["users"][user]
-document_data = load_json("data/document_data.json")
+# research_data = load_json("data/research_data.json")["users"][user]
+# document_data = load_json("data/document_data.json")
 
-research_context = ResearchContext(**research_data)
-document_context = DocumentContext(**document_data)
+# research_context = ResearchContext(**research_data)
+# document_context = DocumentContext(**document_data)
 
-context_prompt = build_context_prompt(research_context, document_context)
-
-print(context_prompt)
+# context_prompt = build_context_prompt(research_context, document_context)
