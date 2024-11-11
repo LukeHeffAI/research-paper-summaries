@@ -1,6 +1,7 @@
 import os
 import time
 import json
+import subprocess
 from research_details import ResearchContext, DocumentContext, load_json, build_context_prompt
 from file_processing import get_pdf_filepaths, read_pdf
 from text_processing import LaTeXConverter, ResearchSummariser, CustomLLMCall
@@ -34,7 +35,8 @@ def main(user: str, overwrite: bool = False):
             pdf_texts[pdf_title] = text
         pdf_count += 1
 
-    with open("documents\{user}\pdf_texts.json", "w", encoding="utf-8") as file:
+    print(f"All PDFs loaded/read. Saving PDF texts. Time elapsed: {time.time() - start_time:.2f} seconds")
+    with open(f"users\{user}\documents\pdf_texts.json", "w", encoding="utf-8") as file:
         file.write(json.dumps(pdf_texts))
 
     # Build the research context prompt
@@ -82,7 +84,7 @@ def main(user: str, overwrite: bool = False):
     # Wait 20 seconds, then rename "main.tex" to f"{filename}.tex"
     print("Building summary report. Time elapsed: {:.2f} seconds. This should take roughly 30 seconds.".format(time.time() - start_time))
     time.sleep(20)
-    os.rename("Research-Summaries\main.pdf", f"users\{user}\summaries\{filename}.pdf")
+    os.rename("Research-Summaries\main.pdf", f"users\{user}\summaries{filename}.pdf")
 
     print("Done! Time elapsed: {:.2f} seconds".format(time.time() - start_time))
 
