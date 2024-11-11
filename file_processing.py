@@ -1,6 +1,7 @@
 ## This file will contain functions for processing files, including:
 ## - Reading all PDF filepaths from a directory
 ## - Reading the contents of a PDF file
+## - Updating the filenames of PDFs in a directory
 
 import os
 import pdfplumber
