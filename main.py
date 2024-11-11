@@ -1,10 +1,11 @@
 import os
 import time
-from research_details import build_context_prompt
+import json
+from research_details import ResearchContext, DocumentContext, load_json, build_context_prompt
 from file_processing import get_pdf_filepaths, read_pdf
-from text_processing import LaTeXConverter, ResearchSummariser
+from text_processing import LaTeXConverter, ResearchSummariser, CustomLLMCall
 
-def main():
+def main(user: str = "luke"):
     # Start timer
     start_time = time.time()
 
@@ -16,13 +17,17 @@ def main():
 
     # Read the contents of each PDF file
     print(f"Reading PDF files. Time elapsed: {time.time() - start_time:.2f} seconds")
-    pdf_texts = {}
+    pdf_texts = load_json("documents\pdf_texts.json")
     pdf_count = 1
     for pdf_title, pdf_filepath in pdf_titles.items():
         print(f"Reading PDF {pdf_count}. Time elapsed: {time.time() - start_time:.2f} seconds")
-        text = read_pdf(pdf_filepath)
-        pdf_texts[pdf_title] = text
+        if pdf_title not in pdf_texts:
+            text = read_pdf(pdf_filepath)
+            pdf_texts[pdf_title] = text
         pdf_count += 1
+
+    with open("documents\pdf_texts.json.json", "w", encoding="utf-8") as file:
+        file.write(json.dumps(pdf_texts))
 
     # Build the research context prompt
     research_prompt = build_context_prompt()
@@ -49,12 +54,19 @@ def main():
     latex_converter = LaTeXConverter()
     latex_text = latex_converter.convert_to_latex(all_summaries)
 
+    filename = CustomLLMCall().llm_call("Create a filename for the file containing the following text:\n\n" + latex_text)
+
     # Save the LaTeX file
     with open("Research-Summaries\main.tex", "w", encoding="utf-8") as file:
         file.write(latex_text.replace("```", "").replace("latex", ""))
+
+    # Wait 20 seconds, then rename "main.tex" to f"{filename}.tex"
+    time.sleep(20)
+    os.rename("Research-Summaries\main.tex", f"Research-Summaries\{filename}.tex")
 
     print("Done! Time elapsed: {:.2f} seconds".format(time.time() - start_time))
 
 
 if __name__ == "__main__":
-    main()
+    user = "luke"
+    main(user=user)
