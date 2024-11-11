@@ -1,7 +1,16 @@
 {
-    "harriet": {
-        "research_field": "Anthropology",
-        "research_topic": "Indigenous studies in Australia",
-        "research_interests": ["Learning on-country principles", "Meaning of 'Country' in indigenous contexts", "Settler colonial theory", "Land education/pedagogy and curriculum development"]
+    "users": {
+        "harriet": {
+            "research_field": "Anthropology",
+            "research_topic": "Indigenous studies in Australia",
+            "research_interests": ["Learning on-country principles", "Meaning of 'Country' in indigenous contexts", "Settler colonial theory", "Land education/pedagogy and curriculum development"],
+            "research_focus": "land based education and building education programs that incorporate indigenous knowledges and pedagogies"
+        },
+        "luke": {
+            "research_field": "Machine Learning",
+            "research_topic": "generalisation of large pretrained models",
+            "research_interests": ["Multimodal models", "Zero-shot classification", "Human-AI collaboration", "Model interpretability"],
+            "research_focus": "developing models that can generalise to new tasks and domains, and understanding how to make these models more interpretable and usable for humans"
+        }
     }
 }
