@@ -3512,3 +3512,4 @@ research-summariser/Scripts/__pycache__/pdf2txt.cpython-310.pyc
 .gitignore
 main.py
 .gitignore
+users/*/documents/pdf_texts.json
