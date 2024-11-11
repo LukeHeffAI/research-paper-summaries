@@ -19,6 +19,7 @@ def main(user: str, overwrite: bool = False):
     # Get all PDF filepaths from the "documents" directory
     print(f"Getting PDF filepaths. Time elapsed: {time.time() - start_time:.2f} seconds")
     pdf_titles = get_pdf_filepaths(f"documents\{user}")
+    print(f"{len(pdf_titles)} PDF filepaths found")
 
     # Read the contents of each PDF file
     print(f"Reading PDF files. Time elapsed: {time.time() - start_time:.2f} seconds")
