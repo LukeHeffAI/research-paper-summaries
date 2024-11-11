@@ -13,10 +13,7 @@ def get_pdf_filepaths(directory):
             if file.endswith(".pdf"):
                 pdf_titles[file] = os.path.join(root, file)
 
-    pdf_count = len(pdf_titles)
-    print(f"{pdf_count} PDF filepaths found")
-
-    return pdf_titles, pdf_count
+    return pdf_titles
 
 def read_pdf(filepath):
     text = ""
@@ -43,4 +40,3 @@ def update_pdf_filenames(directory):
             os.rename("documents\luke\\" + filename, "documents\luke\\" + paper_title)
         else:
             continue
-        
