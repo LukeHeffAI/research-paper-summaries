@@ -32,6 +32,15 @@ class OpenAITextProcessor:
         )
         return response['choices'][0]['message']['content']
     
+class CustomLLMCall(OpenAITextProcessor):
+    def __init__(self, model="gpt-4o-mini", max_tokens=16384):
+        super().__init__(model, max_tokens)
+    
+    def llm_call(self, text):
+        system_content = "You are a helpful assistant."
+        user_content = text
+        return self._create_response(system_content, user_content)
+    
 class GeneralSummariser(OpenAITextProcessor):
     def __init__(self, model=model, max_tokens=16384):
         super().__init__(model, max_tokens)
