@@ -69,8 +69,24 @@ class LaTeXConverter(OpenAITextProcessor):
         system_content = "You are a helpful assistant."
         user_content = "Convert the following series of research paper summaries into a LaTeX document. Solely return the LaTeX content; no filler, language markers, or discussion. Add a contents page at the start. Each paper should have a new page created for it. Use the name of each paper as sections. Bold any text that was surrounded by double asterisks ('**') and remove the asterisks. Make subsections and subsubsections as needed.\n\nThe text is as follows:\n\n" + text
         return self._create_response(system_content, user_content)
+    
+class TechnicalPodcastGenerator(OpenAITextProcessor):
+    def __init__(self, model="gpt-4o-mini", max_tokens=16384):
+        super().__init__(model, max_tokens)
 
+    @staticmethod
+    def format_pod_script(text, speaker_count):
+        if speaker_count == 1:
+            return f"Write text in the style of a technical podcast, discussing the following file:\n\n{text}"
+        # else:
+        #     # TODO: Create unique tags for each speaker before aiming to use this function
+        #     guest_tags = ''.join(f'<guest {i}>, ' for i in range(1, speaker_count))
+        #     return f"Write a discussion in the style of podcast, with <host> and {guest_tags}, aimed at a technical audience, discussing: {text}"
 
+    def generate_podcast_text(self, text, speaker_count=1):
+        system_content = "You are a talented, intelligent, and creative podcast producer and writer."
+        user_content = f"{self.format_pod_script(text, speaker_count)}"
+        return self._create_response(system_content, user_content)
 
 
 # summariser = ResearchSummariser()
