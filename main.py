@@ -4,9 +4,10 @@ import json
 import subprocess
 from research_details import ResearchContext, DocumentContext, load_json, build_context_prompt
 from file_processing import get_pdf_filepaths, read_pdf
-from text_processing import LaTeXConverter, ResearchSummariser, CustomLLMCall
+from text_processing import LaTeXConverter, ResearchSummariser, CustomLLMCall, TechnicalPodcastGenerator
+from audio_processing import VoiceGenerator_ElevenLabs
 
-def main(user: str, overwrite: bool = False):
+def main(user: str, overwrite: bool = False, generate_audio: bool = False):
     # Start timer
     start_time = time.time()
 
@@ -15,6 +16,7 @@ def main(user: str, overwrite: bool = False):
     if not os.path.exists(f"users\{user}"):
         os.makedirs(f"users\{user}\documents")
         os.makedirs(f"users\{user}\summaries")
+        os.makedirs(f"users\{user}\\audio")
         with open(f"users\{user}\documents\pdf_texts.json", "w", encoding="utf-8") as file:
             file.write("{}")
         raise FileNotFoundError(f"Directory 'users\{user}\documents' does not exist. Creating this directory for you now. Add your PDF files to this directory and run the script again.")
@@ -26,7 +28,10 @@ def main(user: str, overwrite: bool = False):
 
     # Read the contents of each PDF file
     print(f"Reading PDF files. Time elapsed: {time.time() - start_time:.2f} seconds")
-    pdf_texts = load_json(f"users\{user}\documents\pdf_texts.json")
+    if not os.path.exists(f"users\{user}\documents\pdf_texts.json"):
+        pdf_texts = {}
+    else:
+        pdf_texts = load_json(f"users\{user}\documents\pdf_texts.json")
     pdf_count = 1
     for pdf_title, pdf_filepath in pdf_titles.items():
         print(f"Reading PDF {pdf_count}. Time elapsed: {time.time() - start_time:.2f} seconds")
@@ -75,7 +80,8 @@ def main(user: str, overwrite: bool = False):
 
     # Create a filename for the LaTeX file
     print(f"Creating filename. Time elapsed: {time.time() - start_time:.2f} seconds")
-    filename = CustomLLMCall().llm_call("Create a filename for the file containing the following text. Do not return anything but the filename as this will be inserted straight into code used to modify the filename:\n\n" + all_summaries[:5000])
+    text_sample_size = 5000
+    filename = CustomLLMCall().llm_call(f"Create a filename for the file containing the following text (the first {text_sample_size} characters). Aim for a general theme of the text. Do not return anything but the filename (including the file type) as this will be inserted straight into code used to modify the filename into a PDF (e.g. 'users/user/summaries/filename.pdf'):\n\n" + all_summaries[:text_sample_size])
 
     # Save the LaTeX file
     with open("Research-Summaries\main.tex", "w", encoding="utf-8") as file:
@@ -84,11 +90,23 @@ def main(user: str, overwrite: bool = False):
     # Wait 20 seconds, then rename "main.tex" to f"{filename}.tex"
     print("Building summary report. Time elapsed: {:.2f} seconds. This should take roughly 30 seconds.".format(time.time() - start_time))
     time.sleep(20)
-    os.rename("Research-Summaries\main.pdf", f"users\{user}\summaries{filename}.pdf")
+    os.rename("Research-Summaries\main.pdf", f"users\{user}\summaries\{filename}.pdf")
+
+    if generate_audio:
+    # Generate a podcast script from summary text
+        # TODO: Parallelise this process. Put it alongside the LaTeX conversion process.
+        print(f"Generating podcast script. Time elapsed: {time.time() - start_time:.2f} seconds")
+        podcast_text = TechnicalPodcastGenerator().generate_podcast_text(read_pdf(f"users\{user}\summaries\{filename}.pdf"))
+
+        # Generate an audio file from the podcast script
+        print(f"Generating audio file. Time elapsed: {time.time() - start_time:.2f} seconds")
+        VoiceGenerator_ElevenLabs().gen_audio(podcast_text, f"users\{user}\\audio\{filename}.mp3")
+
 
     print("Done! Time elapsed: {:.2f} seconds".format(time.time() - start_time))
 
 
 if __name__ == "__main__":
     user = "luke"
-    main(user=user)
+    generate_audio = True
+    main(user=user, generate_audio=generate_audio)
