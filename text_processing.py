@@ -8,7 +8,7 @@ from file_processing import get_pdf_filepaths, read_pdf
 load_dotenv()
 openai.api_key = os.getenv("OPENAI_API_KEY")
 
-max_tokens = 4096
+max_tokens = 16384
 model = "gpt-4o-mini" # Use gpt-4o-mini for testing, gpt-4o for production
 
 # Base class for handling different types of OpenAI text operations
