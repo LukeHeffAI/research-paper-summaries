@@ -107,6 +107,6 @@ def main(user: str, overwrite: bool = False, generate_audio: bool = False):
 
 
 if __name__ == "__main__":
-    user = "luke"
-    generate_audio = True
+    user = "mehrnia"
+    generate_audio = False
     main(user=user, generate_audio=generate_audio)
