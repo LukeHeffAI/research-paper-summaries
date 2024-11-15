@@ -32,11 +32,12 @@ def update_pdf_filenames(directory):
             for page in pdf.pages:
                 text += page.extract_text() or ""
 
-        paper_title = text.split("\n")[0].replace(" ", "_").replace(":", "").replace(",", "").replace(";", "").replace(".", "").replace("?", "").replace("!", "").replace("'", "").replace('"', "").replace("[", "").replace("]", "").replace("{", "").replace("}", "").replace("/", "").replace("\\", "").replace("|", "").replace("<", "").replace(">", "").replace("=", "").replace("+", "").replace("*", "").replace("&", "").replace("^", "").replace("%", "").replace("#", "").replace("@", "").replace("`", "").replace("~", "") + ".pdf"
+        paper_title = text.split("\n")[0].replace(":", "").replace(",", "").replace(";", "").replace(".", "").replace("?", "").replace("!", "").replace("'", "").replace('"', "").replace("[", "").replace("]", "").replace("{", "").replace("}", "").replace("/", "").replace("\\", "").replace("|", "").replace("<", "").replace(">", "").replace("=", "").replace("+", "").replace("*", "").replace("&", "").replace("^", "").replace("%", "").replace("#", "").replace("@", "").replace("`", "").replace("~", "") + ".pdf"
 
         print(f"Current filename: {filename}. Suggested filename: {paper_title}")
         confirmation = input(f"Replace filename?\n")
         if confirmation == "y":
-            os.rename("documents\luke\\" + filename, "documents\luke\\" + paper_title)
+            os.rename(f"{directory}\\" + filename, f"{directory}\\" + paper_title)
+            print("Filename updated from " + f"{directory}\\" + filename + " to " + f"{directory}\\" + paper_title)
         else:
             continue
