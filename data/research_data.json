@@ -11,6 +11,12 @@
             "research_topic": "generalisation of large pretrained models",
             "research_interests": ["Multimodal models", "Zero-shot classification", "Human-AI collaboration", "Model interpretability"],
             "research_focus": "developing models that can generalise to new tasks and domains, and understanding how to make these models more interpretable and usable for humans"
+        },
+        "mehrnia": {
+            "research_field": "Machine Learning",
+            "research_topic": "improving machine learning models for out-of-distribution generalisation",
+            "research_interests": ["Large language models", "Vision-language models", "Predictive reasoning", "Hallucination detection in generative models", "Diffusion"],
+            "research_focus": "developing models that can generalise to domains outside of the domain they were trained on, and understanding how to make these models more robust to distributional shifts"
         }
     }
 }
