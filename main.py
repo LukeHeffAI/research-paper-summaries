@@ -11,14 +11,15 @@ def main(user: str, overwrite: bool = False, generate_audio: bool = False):
     # Start timer
     start_time = time.time()
 
-    pdf_texts_path = f"users\{user}\documents\pdf_texts.json"
+    user_path = f"users\{user}"
+    pdf_texts_path = f"{user_path}\documents\pdf_texts.json"
 
     # Check if user directory exists and create it and necessary files if not
     # TODO: Move this into a class method in a new class called "NewUserHandler"
-    if not os.path.exists(f"users\{user}"):
-        os.makedirs(f"users\{user}\documents")
-        os.makedirs(f"users\{user}\summaries")
-        os.makedirs(f"users\{user}\\audio")
+    if not os.path.exists(user_path):
+        os.makedirs(f"{user_path}\documents")
+        os.makedirs(f"{user_path}\summaries")
+        os.makedirs(f"{user_path}\\audio")
         with open(pdf_texts_path, "w", encoding="utf-8") as file:
             file.write("{}")
         raise FileNotFoundError(f"Directory 'users\{user}\documents' does not exist. Creating this directory for you now. Add your PDF files to this directory and run the script again.")
