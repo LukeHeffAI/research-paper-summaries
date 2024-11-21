@@ -15,7 +15,7 @@ class VoiceGenerator_ElevenLabs:
             "Jack": "https://api.elevenlabs.io/v1/text-to-speech/iwZJs1aNhjvXWUPoqjEW"
         }
 
-    def gen_audio(self, text, output_audio_path, speaker="Dave", chunk_size=1024):
+    def gen_audio(self, text, output_audio_path, speaker="Charlie", chunk_size=1024):
         xi_api_key = os.getenv('XI_API_KEY')
         url = self.speaker_urls.get(speaker)
         if not url:
