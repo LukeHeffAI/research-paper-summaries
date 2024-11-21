@@ -5,6 +5,7 @@
 
 import os
 import pdfplumber
+from concurrent.futures import ProcessPoolExecutor
 
 def get_pdf_filepaths(directory):
     pdf_titles = {}
@@ -21,6 +22,14 @@ def read_pdf(filepath):
         for page in pdf.pages:
             text += page.extract_text() or ""
     return text
+
+def process_multiple_pdfs(filepaths):
+    results = {}
+    with ProcessPoolExecutor() as executor:
+        # Map the function to multiple filepaths
+        for filepath, result in zip(filepaths, executor.map(read_pdf, filepaths)):
+            results[filepath] = result
+    return results
 
 def update_pdf_filenames(directory):
     '''This function will update the filenames of PDFs in a directory based on the first line of text in the PDF. Especially useful as a heuristic when downloading PDFs from ArXiv or elsewhere on the web.'''
