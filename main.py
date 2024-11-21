@@ -11,13 +11,16 @@ def main(user: str, overwrite: bool = False, generate_audio: bool = False):
     # Start timer
     start_time = time.time()
 
+    user_path = f"users\{user}"
+    pdf_texts_path = f"{user_path}\documents\pdf_texts.json"
+
     # Check if user directory exists and create it and necessary files if not
     # TODO: Move this into a class method in a new class called "NewUserHandler"
-    if not os.path.exists(f"users\{user}"):
-        os.makedirs(f"users\{user}\documents")
-        os.makedirs(f"users\{user}\summaries")
-        os.makedirs(f"users\{user}\\audio")
-        with open(f"users\{user}\documents\pdf_texts.json", "w", encoding="utf-8") as file:
+    if not os.path.exists(user_path):
+        os.makedirs(f"{user_path}\documents")
+        os.makedirs(f"{user_path}\summaries")
+        os.makedirs(f"{user_path}\\audio")
+        with open(pdf_texts_path, "w", encoding="utf-8") as file:
             file.write("{}")
         raise FileNotFoundError(f"Directory 'users\{user}\documents' does not exist. Creating this directory for you now. Add your PDF files to this directory and run the script again.")
 
@@ -28,10 +31,7 @@ def main(user: str, overwrite: bool = False, generate_audio: bool = False):
 
     # Read the contents of each PDF file
     print(f"Reading PDF files. Time elapsed: {time.time() - start_time:.2f} seconds")
-    if not os.path.exists(f"users\{user}\documents\pdf_texts.json"):
-        pdf_texts = {}
-    else:
-        pdf_texts = load_json(f"users\{user}\documents\pdf_texts.json")
+    pdf_texts = load_json(pdf_texts_path) if os.path.exists(pdf_texts_path) else {}
     pdf_count = 1
     for pdf_title, pdf_filepath in pdf_titles.items():
         print(f"Reading PDF {pdf_count}. Time elapsed: {time.time() - start_time:.2f} seconds")
@@ -41,7 +41,7 @@ def main(user: str, overwrite: bool = False, generate_audio: bool = False):
         pdf_count += 1
 
     print(f"All PDFs loaded/read. Saving PDF texts. Time elapsed: {time.time() - start_time:.2f} seconds")
-    with open(f"users\{user}\documents\pdf_texts.json", "w", encoding="utf-8") as file:
+    with open(pdf_texts_path, "w", encoding="utf-8") as file:
         file.write(json.dumps(pdf_texts))
 
     # Build the research context prompt
@@ -108,5 +108,5 @@ def main(user: str, overwrite: bool = False, generate_audio: bool = False):
 
 if __name__ == "__main__":
     user = "luke"
-    generate_audio = True
+    generate_audio = False
     main(user=user, generate_audio=generate_audio)
