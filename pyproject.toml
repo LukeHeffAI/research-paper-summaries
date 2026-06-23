@@ -1,0 +1,122 @@
+[project]
+name = "downlow"
+version = "0.1.0"
+description = "DownLow — the low-down on a research paper: context-steered summaries, Typst reports, and a two-presenter interview podcast."
+requires-python = ">=3.11"
+readme = "README.md"
+dependencies = [
+    # LLM
+    "anthropic>=0.40",
+    # Persistence
+    "sqlmodel>=0.0.22",
+    "alembic>=1.13",
+    # Validation & config
+    "pydantic>=2.9",
+    "pydantic-settings>=2.5",
+    # PDF
+    "pdfplumber>=0.11",
+    # Audio (TTS + mixing); pydub needs system ffmpeg
+    "elevenlabs>=1.0",
+    "pydub>=0.25",
+    # CLI + HTTP
+    "typer>=0.12",
+    "httpx>=0.27",
+    "python-dotenv>=1.0",
+]
+
+[project.optional-dependencies]
+# Future FastAPI layer (Phase 3) — `core` must never import from it.
+api = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.30",
+]
+dev = [
+    "pytest>=8.3",
+    "pytest-cov>=5.0",
+    "ruff>=0.7",
+    "mypy>=1.12",
+    "pre-commit>=4.0",
+]
+
+[project.scripts]
+dl = "downlow.cli.app:app"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/downlow"]
+
+# =============================================================================
+# Ruff
+# =============================================================================
+[tool.ruff]
+target-version = "py311"
+line-length = 120
+src = ["src", "tests"]
+exclude = ["legacy"]
+
+[tool.ruff.lint]
+select = ["E", "W", "F", "I", "N", "UP", "B", "SIM", "T20", "RUF"]
+ignore = [
+    "E501",   # line length (handled by the formatter)
+    "N815",   # mixedCase class attrs (Pydantic API models)
+    "RUF012", # mutable class attrs
+]
+
+[tool.ruff.lint.per-file-ignores]
+"src/downlow/cli/*" = ["T201"] # the CLI legitimately prints
+
+[tool.ruff.lint.isort]
+known-first-party = ["downlow"]
+
+# =============================================================================
+# Mypy
+# =============================================================================
+[tool.mypy]
+python_version = "3.11"
+strict = true
+warn_return_any = true
+warn_unused_configs = true
+plugins = ["pydantic.mypy"]
+exclude = ["legacy/"]
+
+[[tool.mypy.overrides]]
+# These libraries ship no type stubs; scope the tolerance (don't blanket-ignore).
+module = ["pdfplumber.*", "pydub.*", "elevenlabs.*", "typst.*"]
+ignore_missing_imports = true
+
+# =============================================================================
+# Pytest
+# =============================================================================
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
+addopts = ["--strict-markers", "--tb=short", "-q"]
+markers = [
+    "slow: slow tests (deselect with -m 'not slow')",
+    "integration: tests needing external services or binaries (typst / ffmpeg)",
+]
+
+# =============================================================================
+# Coverage
+# =============================================================================
+[tool.coverage.run]
+source = ["downlow"]
+omit = [
+    "*/__init__.py",
+    "src/downlow/api/*",
+    "src/downlow/frontend/*",
+]
+
+[tool.coverage.report]
+# Phase 0 (skeleton) floor is 0. Ratchet 60 -> 70 -> 80 as F1-F5 land in Phase 1.
+fail_under = 0
+show_missing = true
+exclude_lines = [
+    "pragma: no cover",
+    "if TYPE_CHECKING:",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+]
