@@ -21,6 +21,8 @@ the "DB-backed later" note below.
 from __future__ import annotations
 
 import hashlib
+import os
+import tempfile
 from pathlib import Path
 
 from downlow.domain.ports import PdfExtractor
@@ -89,11 +91,21 @@ class IngestStage:
 
     @staticmethod
     def _write_cache(cache_path: Path, extracted: ExtractedText) -> None:
-        """Write the sidecar atomically (temp file + replace) to avoid partial reads."""
+        """Write the sidecar atomically via a unique temp file + replace.
+
+        A unique temp name per writer means concurrent ingestion of the *same*
+        PDF cannot clobber a shared temp path before the atomic ``replace``.
+        """
         cache_path.parent.mkdir(parents=True, exist_ok=True)
-        tmp_path = cache_path.with_suffix(cache_path.suffix + ".tmp")
-        tmp_path.write_text(extracted.model_dump_json(), encoding="utf-8")
-        tmp_path.replace(cache_path)
+        fd, tmp_name = tempfile.mkstemp(dir=cache_path.parent, prefix=f"{cache_path.name}.", suffix=".tmp")
+        tmp_path = Path(tmp_name)
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as fh:
+                fh.write(extracted.model_dump_json())
+            tmp_path.replace(cache_path)
+        except BaseException:
+            tmp_path.unlink(missing_ok=True)
+            raise
 
     @staticmethod
     def _source_hash(pdf_path: Path) -> str:

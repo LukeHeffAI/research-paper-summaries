@@ -83,6 +83,15 @@ def _extract_with_pages(tmp_path: Path, page_texts: list[str | None], raw: bytes
         ("   hello   ", "hello"),
         # strip control characters
         ("ab\x00\x07cd", "abcd"),
+        # Unicode line/paragraph separators are TRANSLATED to newline, not deleted
+        (f"a{chr(0x2028)}b", "a\nb"),
+        (f"a{chr(0x2029)}b", "a\nb"),
+        # non-breaking / Unicode spaces collapse like regular whitespace
+        (f"a{chr(0xA0)}{chr(0xA0)}b", "a b"),
+        (f"a{chr(0x2003)}b", "a b"),
+        # soft-hyphen line-wrap joins; a standalone soft hyphen is dropped
+        (f"exam{chr(0xAD)}\nple", "example"),
+        (f"a{chr(0xAD)}b", "ab"),
     ],
 )
 def test_normalize_text_cases(raw: str, expected: str) -> None:
@@ -173,6 +182,18 @@ def test_dense_text_not_flagged_scanned(tmp_path: Path) -> None:
     body = "This is a properly extracted page with plenty of real text content on it. " * 3
     result = _extract_with_pages(tmp_path, [body])
     assert result.is_scanned is False
+
+
+def test_short_single_page_not_flagged_scanned(tmp_path: Path) -> None:
+    # A genuinely short one-page note must NOT be mistaken for a scan.
+    result = _extract_with_pages(tmp_path, ["See appendix A for the full derivation and the proof."])
+    assert result.is_scanned is False
+
+
+def test_zero_page_pdf_raises_empty(tmp_path: Path) -> None:
+    with pytest.raises(EmptyExtractionError) as exc:
+        _extract_with_pages(tmp_path, [])
+    assert exc.value.page_count == 0
 
 
 # --------------------------------------------------------------------------- #
