@@ -11,6 +11,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Source of Truth
 
 - **`PROJECT_PLAN.md`** — the living plan: vision, target architecture, data model, the rebuilt pipeline, phased roadmap (with the F1–F5 traceability table), tech choices, risks, scope-of-this-phase, and open questions. Authoritative for *what* to build and *why*.
+- **`docs/podcast_design.md`** — authoritative NARRATE/F4 design: the everyperson-host persona, podcast craft principles (with sources), the multi-speaker script schema, the audio mixer (ripped from VTTD), the config-file→Settings strategy, and the multi-paper-ready Episode model.
 - **`README.md`** — quickstart commands.
 - **`legacy/`** — the original pre-rebuild scripts, kept **only** as a behavioural reference for the F1–F5 rebuild. Broken on Linux (Windows backslash paths), legacy OpenAI SDK, external-LaTeX hack. Excluded from ruff/mypy/CI. **Do not import from `legacy/`; delete it once Phase 1 is complete and the traceability tests pass.**
 - **`FUTURE_FIXES.md`** — running scratchpad for known issues / tech debt (create it on first use). Append rather than fixing unrelated issues opportunistically; convert to GitHub issues via the `future-fixes-to-issues` skill.

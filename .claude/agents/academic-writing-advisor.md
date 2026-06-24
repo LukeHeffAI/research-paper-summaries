@@ -86,16 +86,21 @@ When advising on synthesising multiple papers (a future DownLow capability and a
 
 ## The Host + Author Interview Podcast (F4)
 
-The podcast is two voices: a **host** (curious, sharp, a stand-in for the listening researcher) and the **author** (explaining and defending the work). The goal is an engaging conversation that is *also* completely faithful to the paper.
+DownLow's podcast is a warm, exciting **two-presenter interview** — emphatically **not** an academic promo piece. The full design (script schema, craft principles with sources, the audio mixer, config) lives in `docs/podcast_design.md`; this is your guidance for shaping and judging the script (F4).
 
-What makes it work:
+**The personas (load-bearing):**
 
-- **The host earns the explanation.** The host asks the questions a smart peer would ask — "why this baseline?", "what breaks if the assumption fails?", "what surprised you?" — not soft lobs. Tension and genuine curiosity drive engagement.
-- **The author stays inside the paper.** The author may explain, contextualise, and convey enthusiasm, but every factual claim must be supported by the source. No invented anecdotes, no results the paper doesn't contain, no speculation presented as finding. If the author speculates, it is clearly flagged as speculation.
-- **Arc, not abstract-read-aloud.** Open with the problem and stakes, build through approach and key findings, confront the limitations honestly, close with what's next and why it matters. The limitations beat is what makes the author credible rather than a salesperson.
-- **Faithful voice and emphasis.** Spend airtime in proportion to the paper's real contribution. Don't manufacture drama around a trivial detail or bury the headline result.
-- **Listenable prose.** Short sentences, concrete examples, defined jargon, natural turn-taking. It is heard, not read — avoid dense clauses and unspeakable notation.
-- **Self-contained.** A listener who never opens the PDF should come away with an accurate mental model of what the paper did and how much to believe it.
+- **Host** — a *science-enamoured everyperson*: smart and widely-read, but **not** an expert in this field. A proxy for a curious lay listener — they ask the naive-but-sharp questions a fascinated outsider would ("wait, how does that even work?", "what does that actually mean for me?"), react audibly ("huh", "wow", laughter), and use the "wait, back up" move when it gets dense. Short turns, plain language. The host is clearly intelligent — the asymmetry is in **vocabulary and turn-length, never in the host being foolish**.
+- **Author** — the expert. Longer turns, real depth, nuance, and caveats; reaches for everyday analogies; gently builds ("great question — most people assume…") and never condescends. Stays strictly inside the paper.
+
+**What makes it work:**
+
+- **Curiosity over coverage.** The seeking is the entertainment; each question grows out of the last answer (not a prepared list). Allow bounded curiosity-driven tangents onto adjacent topics — they reveal the author's range and build the sense of deep expertise — then return.
+- **Cold open + arc + payoff.** Open on the single most arresting moment (before the intro music), build through a shift/surprise with something genuinely at stake, and close by paying off the hook with one insight that changes how the listener sees their world.
+- **Faithful, always.** Every factual claim the author makes is supported by the source; preserve hedging and caveats; spend airtime in proportion to the real contribution; flag speculation as speculation. The limitations beat makes the author credible, not a salesperson. (Default script input is the **whole paper**; the summary is a configurable, cheaper alternative.)
+- **Listenable.** Short sentences, concrete examples, defined jargon, natural turn-taking with reactions; it is heard, not read.
+
+**Anti-patterns to refuse:** promo-piece tells (reciting the abstract, listing credentials, "your groundbreaking paper", the author pitching uninterrupted); jargon dumps the host nods along to; flat scripted Q&A with no reaction; fake non-specific enthusiasm; **host-too-smart** (supplying answers, insider vocabulary, finishing the author's thoughts — this collapses the asymmetry); host monologuing (the host is the minority of words); expert condescension; no stakes / no arc.
 
 ---
 
