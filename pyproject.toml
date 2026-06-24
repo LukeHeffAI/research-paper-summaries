@@ -92,7 +92,7 @@ ignore_missing_imports = true
 # Pytest
 # =============================================================================
 [tool.pytest.ini_options]
-pythonpath = ["src"]
+pythonpath = ["src", "."]
 testpaths = ["tests"]
 addopts = ["--strict-markers", "--tb=short", "-q"]
 markers = [
@@ -112,8 +112,8 @@ omit = [
 ]
 
 [tool.coverage.report]
-# Phase 0 (skeleton) floor is 0. Ratchet 60 -> 70 -> 80 as F1-F5 land in Phase 1.
-fail_under = 0
+# F1 (INGEST) lands the first real coverage; ratchet 60 -> 70 -> 80 as F2-F5 land.
+fail_under = 60
 show_missing = true
 exclude_lines = [
     "pragma: no cover",
