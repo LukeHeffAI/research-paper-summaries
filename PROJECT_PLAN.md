@@ -256,7 +256,7 @@ One `Settings(BaseSettings)` in `config/settings.py` is the **single** place the
 
 Nested config is grouped where it clarifies — a `ModelConfig { id, max_tokens, effort }` per stage in `config/models.py` — so a stage receives a typed `ModelConfig` rather than loose strings/ints. **`effort` is a real cost lever:** Sonnet 4.6 defaults to `effort="high"` (more latency/tokens); summarisation/narration should run at `effort="low"` or `"medium"` with thinking off, while the future eval LLM-judge runs at `effort="high"`. `Settings` is constructed once at the composition root (`cli/deps.py`) and injected downward; **core never imports `Settings`**, only the typed values it is handed (keeping `core/` pure and unit-testable with arbitrary config). A `.env.example` (no real keys) documents every variable.
 
-**Config file → Settings UI (the tunables layer).** Beyond secrets (`.env`) and the typed `Settings`, the owner-tunable knobs — podcast `script_source` (`paper`|`summary`), host-persona text, `tone_presets`, the mix constants, default host/author voices, episode-length targets — live in a non-secret **config file** (`config/downlow.toml`) loaded via pydantic-settings, providing the **initial values**. Later these graduate to a DB-backed `Setting` registry (the tipping-tools `SystemSetting` pattern: key/value, read-through cache, write-through) seeded from the config file and surfaced in a **Settings tab** in the UI — the config file stays the fallback/defaults. A knob's lifecycle: config default → DB override → UI control, no code change. See `docs/podcast_design.md` §7.
+**Config file → Settings UI (the tunables layer).** Beyond secrets (`.env`) and the typed `Settings`, the owner-tunable knobs — podcast `script_source` (`paper`|`summary`), host-persona text, `tone_presets`, the mix constants, default host/author voices, episode-length targets (default ~8 min) — live in a non-secret **config file** (`config/downlow.toml`) loaded via pydantic-settings, providing the **initial values**. Later these graduate to a DB-backed `Setting` registry (the tipping-tools `SystemSetting` pattern: key/value, read-through cache, write-through) seeded from the config file and surfaced in a **Settings tab** in the UI — the config file stays the fallback/defaults. A knob's lifecycle: config default → DB override → UI control, no code change. See `docs/podcast_design.md` §7.
 
 **On-disk artifact layout** under a configurable `DATA_DIR` (structured data in SQLite, binaries on the filesystem per the locked decision):
 
@@ -265,7 +265,7 @@ $DATA_DIR/
 ├── downlow.db          # SQLite (→ Postgres later via DATABASE_URL)
 ├── sources/<paper_id>/source.pdf  # ingested source PDFs
 ├── reports/<paper_id>/<filename>.pdf   # Typst-rendered reports
-├── audio/<paper_id>/<asset_id>.mp3     # stitched podcast mp3s
+├── audio/<episode_id>/<asset_id>.mp3     # stitched podcast mp3s
 ├── voices/samples/<voice_id>.<ext>     # uploaded clone samples (FUTURE)
 └── cache/
     ├── extracted/<source_hash>.json    # ingest cache (replaces pdf_texts.json)
@@ -306,7 +306,7 @@ Status enums (`domain/enums.py`):
 
 **PodcastAsset** (≙ VTTD audio fields) — `id, episode_id (FK), mp3_ref, narration_script (JSON: the ordered multi-speaker `Turn[]` + per-turn music/SFX cues), host_voice_id (FK→Voice), model_id, duration_seconds (nullable), created_at`. The host voice is one consistent stock voice now; each author voice is per-paper (`Paper.author_voice_id`), so a multi-paper episode resolves multiple author voices. *Why store the script:* it is the regenerable, inspectable source of the mp3 and the per-turn transcript.
 
-**PipelineRun** (the Job abstraction) — `id, paper_id (FK), status (RunStatus), requested_stages (JSON list[str]), created_at, started_at, finished_at, error`. One row per processing invocation.
+**PipelineRun** (the Job abstraction) — `id, paper_id (FK), status (RunStatus), requested_stages (JSON list[str]), created_at, started_at, finished_at, error`. One row per processing invocation. *(Paper-scoped today; NARRATE's episode-scoped narration run + the `Episode` are wired when the API/worker phase needs multi-paper — single-paper needs no change.)*
 
 **StageRun** — `id, run_id (FK), stage_name, status (StageStatus), cache_hit (bool), model_id (nullable), output_ref (nullable), error, started_at, finished_at`. Per-stage status enables retry-from-failure and, later, a worker claiming/advancing individual stages. *Why a child table not columns-on-Paper:* keeps history, supports re-processing, and is the async-later boundary.
 
@@ -408,7 +408,7 @@ class PaperSummary(BaseModel):
 
 The centrepiece. The **two-presenter (host + author) interview ships this phase** — whole-paper → Claude interview script → per-turn TTS (distinct stock voices) → **full VTTD-style mix** (intro/outro music, optional SFX, crossfades, loudness-normalised) → one mp3. Default script input is the **whole paper** (the summary is a configurable, cheaper alternative). Only author voice *cloning* is deferred (Phase 7). **Full design — host persona, craft principles, the mixer rip, config strategy, and the multi-paper-ready Episode model — lives in `docs/podcast_design.md`.**
 
-**Multi-speaker narration-script schema (built now; generalises VTTD's character+dialogue+tone model):**
+**Multi-speaker narration-script schema** — a *simplified* view below; the **authoritative** schema (turns of `type` one of {speech, pause, music, sfx}, with `cue`/`under` for music & SFX, and `paper_content_hashes: list[str]`) lives in `docs/podcast_design.md` §3, generalising VTTD's segment model:
 
 ```python
 Role = Literal["host", "author"]
@@ -423,7 +423,7 @@ class VoiceRef(BaseModel):
     voice_id: str                        # FK into the Voice pool
 
 class NarrationScript(BaseModel):
-    paper_content_hash: str
+    paper_content_hashes: list[str]      # multi-paper-ready (one entry now)
     turns: list[Turn]                    # ordered host↔author interview
     voices: list[VoiceRef]               # role → voice mapping
     model: str
@@ -431,13 +431,13 @@ class NarrationScript(BaseModel):
 ```
 
 - **Step 4a (Claude script generation):** via the same `complete_structured` port + truncation guard + section-split-for-long-input machinery as SUMMARISE. **This phase: generate the two-presenter host↔author interview script** (host asks, author answers in-character, host follows up), in the `turns` schema, generated by default from the **WHOLE PAPER** (the summary is a configurable, cheaper alternative — re-feeding the summary loses signal). A versioned interview `SYSTEM_PROMPT` encodes the everyperson-host persona + the podcast craft principles (see `docs/podcast_design.md`) and governs tone, depth-asymmetry, and turn-taking. Default model `claude-sonnet-4-6`; scripts can be long, so when `max_tokens` is large, **stream** (`client.messages.stream(...).get_final_message()`).
-- **Step 4b (TTS + mix):** **Ports** `TTSClient.synthesize(*, text, voice, model) -> bytes` and `AudioMixer.mix(segments) -> bytes`; `ElevenLabsTTSClient` + a `pydub`-based mixer are the defaults, `FakeTTSClient`/`FakeMixer` (deterministic dummy mp3) for tests. **Modernise the raw `requests` POST → the official `elevenlabs` Python SDK** (typed, streaming/retries, and the voice-cloning API for later). **This phase = two stock voices:** map `host` and `author` turns to two distinct stock ElevenLabs voices, synth each turn, then **concatenate/mix the per-turn segments into one mp3** with inter-turn gaps and level normalisation (VTTD's `audio_mixer` pattern via `pydub` + ffmpeg). Cross-fades/music/SFX are later polish. Stream the final mp3 to the library audio path.
+- **Step 4b (TTS + mix):** **Ports** `TTSClient.synthesize(*, text, voice, model) -> bytes` and `AudioMixer.mix(segments) -> bytes`; `ElevenLabsTTSClient` + a `pydub`-based mixer are the defaults, `FakeTTSClient`/`FakeMixer` (deterministic dummy mp3) for tests. **Modernise the raw `requests` POST → the official `elevenlabs` Python SDK** (typed, streaming/retries, and the voice-cloning API for later). **This phase = two stock voices:** map `host` and `author` turns to two distinct stock ElevenLabs voices, synth each turn, then the **full VTTD-style `AudioMixer`** renders one mp3 — a 3-layer timeline (voice track + music/ambient bed + SFX/sting overlay) with crossfades, intro/outro music, and loudness-normalisation (ripped from VTTD's `audio_mixer.py`; full detail in `docs/podcast_design.md` §6). Stream the final mp3 to the library audio path.
 - **Output:** a `PodcastAsset` (mp3 ref, the `NarrationScript` JSON, voices used, model id). **Cache audio** by `(script_hash, voice_id, tts_model)` — re-narrating the same script with the same voice returns the cached mp3.
 
 **Clearly marked FUTURE (zero-rework — the schema/ports above already support them):**
 
 - **Voice-clone onboarding:** researcher reads the template script → upload sample → `ElevenLabsTTSClient.clone(sample) -> Voice(source="cloned")` → assign as a Paper's author voice (a different SDK call behind the same `TTSClient` port).
-- Mix polish: cross-fades, intro/outro, music beds and SFX (the basic concatenate-with-gaps mixer ships now; richer `audio_mixer` polish later).
+- **Generated theme music** (via ElevenLabs) to replace the placeholder/curated theme, plus richer SFX beds — the full 3-layer mixer (crossfades, intro/outro music, normalise) already ships this phase.
 - The journal's per-section-with-neighbour-context generation (reuse SUMMARISE's section-split machinery).
 - Host-voice selection/preview UI; consent/permissions management for cloned voices.
 
@@ -619,12 +619,12 @@ Legend: `[ ]` todo · `[~]` partial · `[x]` done. Sub-IDs follow VTTD's `N.Ma` 
 - [ ] **1.4d** Write the report PDF via `ArtifactStore`; record the `ReportAsset` row/metadata.
 
 *F4 — Two-presenter interview podcast (host + author, per-turn TTS + mix)*
-- [ ] **1.5a** Define the **multi-speaker `NarrationScript`** schema now (`Turn[]` with `role|text|tone`, `VoiceRef[]`).
+- [ ] **1.5a** Define the **multi-speaker `NarrationScript`** schema now per `docs/podcast_design.md` §3: ordered `Turn[]` (`type` one of speech/pause/music/sfx; speech carries `role|text|tone`; music/sfx carry `cue`/`under`), `VoiceRef[]`, and `paper_content_hashes: list[str]` (multi-paper-ready).
 - [ ] **1.5b** `NarrationScriptGenerator` (LLM) emitting that schema — **host↔author interview** this phase; versioned interview prompt; long-input section splitting; stream when `max_tokens` is large.
 - [ ] **1.5c** `Voice`/voice-pool table **created** by Alembic (id, provider, provider_voice_id, source, owner + consent, sample path); **two stock voices seeded (a default host + a default author) and used by F4**. The clone/consent columns exist but stay unpopulated until Phase 7.
-- [ ] **1.5d** `ElevenLabsTTSClient` adapter (official SDK) behind `TTSClient`; `NarrateStage`: per-turn TTS mapping host/author roles to two stock voices → streamed to the audio artifact path; cache by `(script_hash, voices, tts_model)`.
+- [ ] **1.5d** `ElevenLabsTTSClient` adapter (official SDK) behind `TTSClient`; `NarrateStage`: per-turn TTS mapping host/author roles to two stock voices → streamed to the audio artifact path; per-segment cache by `(turn content, voice_id, preset)`.
 - [ ] **1.5e** Retry/streaming/error handling for ElevenLabs (respect `Retry-After`; smaller `max_workers`).
-- [ ] **1.5f** `AudioMixer` port + `pydub`/ffmpeg adapter: concatenate the per-turn segments with inter-turn gaps and level normalisation into one mp3 (VTTD `audio_mixer` pattern); `FakeMixer` for unit tests.
+- [ ] **1.5f** `AudioMixer` port + `pydub`/ffmpeg adapter — the **full VTTD `audio_mixer.py` rip**: 3-layer timeline (voice track + music/ambient bed + SFX/sting overlay), crossfades, intro/outro music (placeholder/curated asset for now), loudness-normalise; consecutive-same-speaker turn merge; `FakeMixer` for unit tests. (See `docs/podcast_design.md` §6.)
 
 *F5 — Filename-from-first-line heuristic*
 - [ ] **1.6a** Port `update_pdf_filenames` to a pure, testable `FilenameHeuristic` (`suggest()` + `apply()` as separate, non-interactive steps).
