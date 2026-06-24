@@ -758,7 +758,7 @@ Legend: `[ ]` todo · `[~]` partial · `[x]` done. Sub-IDs follow VTTD's `N.Ma` 
 | Config | **pydantic-settings** | Single typed env reader; replaces scattered `os.getenv` + module globals. |
 | CLI | **Typer** | Thin driver over `core` services; ~5-line commands. |
 | Concurrency | **`concurrent.futures.ThreadPoolExecutor`** (sync-first) | I/O/subprocess-bound stages; real speedup without async colouring; clean seam to `AsyncAnthropic`/workers later. |
-| Audio mixing | **pydub + ffmpeg** | Concatenates/mixes the per-turn TTS segments into one track (VTTD `audio_mixer` pattern); ships this phase for the two-presenter podcast. Cross-fades/music/SFX are later polish. |
+| Audio mixing | **pydub + ffmpeg** | The full VTTD `audio_mixer.py` rip (3-layer timeline, crossfades, intro/outro music, loudness-normalise); ships this phase for the two-presenter podcast. Generated theme music / richer SFX come later. |
 | Lint / format | **ruff** (line-length 120, py311, `E,W,F,I,N,UP,B,SIM,T20,RUF`) | Adopted from `tipping-tools`; `T20` helps keep `core` IO-pure. |
 | Types | **mypy strict** | Brand-new typed code, no legacy debt to grandfather; missing-import tolerance scoped to the three un-stubbed libs. |
 | Tests | **pytest + pytest-cov** | Fully-offline; all external APIs and the Typst binary mocked in `unit/`; coverage gate ratchets up. |
