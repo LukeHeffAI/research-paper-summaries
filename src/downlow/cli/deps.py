@@ -58,7 +58,12 @@ def build_container(
 
     cache_dir = settings.data_dir / "cache"
     extractor = PdfPlumberExtractor()
-    llm = AnthropicLLMClient(api_key=settings.anthropic_api_key, model=config.summary.model.id)
+    llm = AnthropicLLMClient(
+        api_key=settings.anthropic_api_key,
+        model=config.summary.model.id,
+        max_retries=settings.max_retries,
+        timeout=settings.request_timeout,
+    )
 
     return Container(
         settings=settings,

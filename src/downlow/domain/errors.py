@@ -60,3 +60,15 @@ class TruncatedResponseError(LLMError):
         self, message: str = "model response truncated at max_tokens", *, request_id: str | None = None
     ) -> None:
         super().__init__(message, request_id=request_id, stop_reason="max_tokens")
+
+
+class SummaryQualityError(DownLowError):
+    """Raised when a structurally-valid summary fails the quality-band gate.
+
+    The structured-output schema guarantees *shape* (the right fields, right
+    types) but not *substance*: a model can return an empty ``key_findings`` list
+    or a one-sentence ``overall_summary`` that parses cleanly yet fails the F2
+    quality bar. SUMMARISE runs cheap deterministic checks (>=1 finding, a sensible
+    word floor on the overall summary) and raises this rather than caching and
+    serving a degenerate summary downstream.
+    """

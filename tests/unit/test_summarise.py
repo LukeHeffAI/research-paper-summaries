@@ -21,10 +21,14 @@ from downlow.core.prompts.summary import (
     SUMMARY_SYSTEM_PROMPT,
     build_context_prompt,
 )
-from downlow.core.stages.summarise import SummariseStage
-from downlow.domain.errors import LLMError, TruncatedResponseError
+from downlow.core.stages.summarise import (
+    _MAX_INLINE_PDF_BYTES,
+    _SMALL_PDF_FAST_PATH_BYTES,
+    SummariseStage,
+)
+from downlow.domain.errors import LLMError, SummaryQualityError, TruncatedResponseError
 from downlow.domain.ports import LLMClient, LLMDocument
-from downlow.domain.schemas import OutputProfile, PaperSummary, ResearchProfile
+from downlow.domain.schemas import KeyFinding, OutputProfile, PaperSummary, ResearchProfile
 from tests.fakes.llm import FakeLLMClient
 
 FIXTURES_DIR = Path(__file__).parent.parent / "fixtures"
@@ -64,6 +68,18 @@ def summary_config() -> SummaryConfig:
 def _write_pdf(tmp_path: Path, raw: bytes = b"%PDF-fake-bytes") -> Path:
     pdf = tmp_path / "paper.pdf"
     pdf.write_bytes(raw)
+    return pdf
+
+
+def _write_midsize_pdf(tmp_path: Path, name: str = "paper.pdf") -> Path:
+    """A PDF above the small-PDF fast-path but under the inline cap.
+
+    Forces the token-budget gate (count_tokens) to actually run -- the fast path
+    skips it for trivially small PDFs.
+    """
+    pdf = tmp_path / name
+    size = _SMALL_PDF_FAST_PATH_BYTES + 4096
+    pdf.write_bytes(b"%PDF-" + b"x" * size)
     return pdf
 
 
@@ -303,7 +319,7 @@ def test_over_budget_pdf_falls_back_to_text(
     output_profile: OutputProfile,
     summary_config: SummaryConfig,
 ) -> None:
-    pdf = _write_pdf(tmp_path)
+    pdf = _write_midsize_pdf(tmp_path)
     long_text = "Section A.\n\nSection B with content."
 
     # PDF over budget, extracted text under budget.
@@ -327,7 +343,7 @@ def test_over_budget_pdf_without_extractor_raises(
     output_profile: OutputProfile,
     summary_config: SummaryConfig,
 ) -> None:
-    pdf = _write_pdf(tmp_path)
+    pdf = _write_midsize_pdf(tmp_path)
     fake = FakeLLMClient(token_count=500_000)  # always over budget
     stage = SummariseStage(fake, cache_dir=tmp_path / "cache", extractor=None)
 
@@ -341,7 +357,7 @@ def test_section_split_when_text_also_over_budget(
     output_profile: OutputProfile,
     summary_config: SummaryConfig,
 ) -> None:
-    pdf = _write_pdf(tmp_path)
+    pdf = _write_midsize_pdf(tmp_path)
     long_text = "First section of the paper.\n\nSecond section of the paper.\n\nThird section here."
     fake = FakeLLMClient(token_count=500_000)  # PDF and full text both over budget
     stage = SummariseStage(
@@ -365,7 +381,7 @@ def test_truncation_then_retry_on_text(
     output_profile: OutputProfile,
     summary_config: SummaryConfig,
 ) -> None:
-    pdf = _write_pdf(tmp_path)
+    pdf = _write_midsize_pdf(tmp_path)
     splittable = "Part one of the document.\n\nPart two of the document."
     # First call truncates; the text splits in half and both halves succeed, then reduce.
     fake = FakeLLMClient(truncate_first_n=1)
@@ -466,3 +482,130 @@ def test_golden_summary_through_stage(
     assert reloaded == summary
     # deterministic JSON serialisation (sorted nothing, but stable structure)
     assert json.loads(sidecar.read_text(encoding="utf-8"))["title"] == recorded.title
+
+
+# --------------------------------------------------------------------------- #
+# Quality-band gate: schema-valid but degenerate summaries are rejected.
+# --------------------------------------------------------------------------- #
+
+
+def _degenerate(*, findings: list[KeyFinding], overall: str) -> PaperSummary:
+    return PaperSummary(
+        title="A Paper",
+        overall_summary=overall,
+        key_findings=findings,
+        contributions=["x"],
+        methods="m",
+        gaps_and_limitations=["g"],
+        relevance_to_profile="r",
+    )
+
+
+def test_quality_gate_rejects_empty_findings(
+    tmp_path: Path,
+    research_profile: ResearchProfile,
+    output_profile: OutputProfile,
+    summary_config: SummaryConfig,
+) -> None:
+    bad = _degenerate(findings=[], overall="word " * 60)
+    fake = FakeLLMClient(result=bad)
+    stage = SummariseStage(fake, cache_dir=tmp_path / "cache")
+    with pytest.raises(SummaryQualityError, match="no key findings"):
+        stage.run(_write_pdf(tmp_path), research_profile, output_profile, summary_config)
+    # a degenerate summary is never cached
+    assert not list((tmp_path / "cache" / "summaries").glob("*.json"))
+
+
+def test_quality_gate_rejects_too_short_overall(
+    tmp_path: Path,
+    research_profile: ResearchProfile,
+    output_profile: OutputProfile,
+    summary_config: SummaryConfig,
+) -> None:
+    bad = _degenerate(findings=[KeyFinding(statement="s")], overall="just three words")
+    fake = FakeLLMClient(result=bad)
+    stage = SummariseStage(fake, cache_dir=tmp_path / "cache")
+    with pytest.raises(SummaryQualityError, match="overall_summary is only"):
+        stage.run(_write_pdf(tmp_path), research_profile, output_profile, summary_config)
+
+
+def test_quality_gate_passes_default_summary(
+    tmp_path: Path,
+    research_profile: ResearchProfile,
+    output_profile: OutputProfile,
+    summary_config: SummaryConfig,
+) -> None:
+    # the default fake summary clears the bar (>=1 finding, long overall_summary)
+    fake = FakeLLMClient()
+    stage = SummariseStage(fake, cache_dir=tmp_path / "cache")
+    summary = stage.run(_write_pdf(tmp_path), research_profile, output_profile, summary_config)
+    assert summary.key_findings
+    assert len(summary.overall_summary.split()) >= 40
+
+
+# --------------------------------------------------------------------------- #
+# Inline-size guard + small-PDF fast path.
+# --------------------------------------------------------------------------- #
+
+
+def test_small_pdf_skips_token_count_and_inlines(
+    tmp_path: Path,
+    research_profile: ResearchProfile,
+    output_profile: OutputProfile,
+    summary_config: SummaryConfig,
+) -> None:
+    pdf = _write_pdf(tmp_path)  # tiny, under the fast-path threshold
+    fake = FakeLLMClient()
+    stage = SummariseStage(fake, cache_dir=tmp_path / "cache")
+    stage.run(pdf, research_profile, output_profile, summary_config)
+    # fast path: native PDF used, count_tokens NOT called
+    assert fake.calls[0].document.is_pdf
+    assert fake.count_token_calls == []
+
+
+def test_oversize_pdf_never_inlined_falls_back_to_text(
+    tmp_path: Path,
+    research_profile: ResearchProfile,
+    output_profile: OutputProfile,
+    summary_config: SummaryConfig,
+) -> None:
+    # A PDF over the inline cap must take the text fallback regardless of tokens.
+    pdf = tmp_path / "huge.pdf"
+    pdf.write_bytes(b"%PDF-" + b"x" * (_MAX_INLINE_PDF_BYTES + 1))
+    long_text = "Body of the paper that is small once extracted."
+    fake = FakeLLMClient()  # token_count default 100, well under budget
+    stage = SummariseStage(fake, cache_dir=tmp_path / "cache", extractor=_FakeExtractor(long_text))
+
+    summary = stage.run(pdf, research_profile, output_profile, summary_config)
+    # text fallback, never a native PDF call; count_tokens not needed to decide
+    # (size guard short-circuits before the budget check)
+    assert not fake.calls[0].document.is_pdf
+    assert summary.input_hash == hashlib.sha256(long_text.encode("utf-8")).hexdigest()
+
+
+def test_oversize_pdf_without_extractor_raises(
+    tmp_path: Path,
+    research_profile: ResearchProfile,
+    output_profile: OutputProfile,
+    summary_config: SummaryConfig,
+) -> None:
+    pdf = tmp_path / "huge.pdf"
+    pdf.write_bytes(b"%PDF-" + b"x" * (_MAX_INLINE_PDF_BYTES + 1))
+    fake = FakeLLMClient()
+    stage = SummariseStage(fake, cache_dir=tmp_path / "cache", extractor=None)
+    with pytest.raises(LLMError, match="native-PDF input budget"):
+        stage.run(pdf, research_profile, output_profile, summary_config)
+
+
+# --------------------------------------------------------------------------- #
+# Adapter: Opus reasoning-leak guard (no network; inspects the thinking param).
+# --------------------------------------------------------------------------- #
+
+
+def test_adapter_forces_thinking_on_opus() -> None:
+    from downlow.adapters.llm.anthropic_client import AnthropicLLMClient
+
+    opus = AnthropicLLMClient(api_key="test-key", model="claude-opus-4-8")
+    sonnet = AnthropicLLMClient(api_key="test-key", model="claude-sonnet-4-6")
+    assert opus._thinking_param() == {"type": "adaptive"}
+    assert sonnet._thinking_param() is None

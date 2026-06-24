@@ -37,7 +37,7 @@ from pathlib import Path
 
 from downlow.config.profiles import SummaryConfig
 from downlow.core.prompts.summary import SUMMARY_SYSTEM_PROMPT, build_context_prompt
-from downlow.domain.errors import LLMError, TruncatedResponseError
+from downlow.domain.errors import LLMError, SummaryQualityError, TruncatedResponseError
 from downlow.domain.ports import LLMClient, LLMDocument, PdfExtractor
 from downlow.domain.schemas import OutputProfile, PaperSummary, ResearchProfile
 
@@ -49,9 +49,25 @@ _SUMMARIES_SUBDIR = "summaries"
 # context window or the per-paper cost silently. Override per call if needed.
 _DEFAULT_INPUT_BUDGET_TOKENS = 180_000
 
+# Raw-bytes cap for inlining a native PDF as base64. The Anthropic request limit
+# is ~32 MB *of the encoded request*; base64 inflates by ~33%, so we cap the raw
+# bytes well under that (20 MB raw -> ~27 MB encoded). A PDF over this is sent via
+# the extracted-text + section-split fallback, never inlined (which would 413).
+_MAX_INLINE_PDF_BYTES = 20 * 1024 * 1024
+
+# Below this raw-bytes size a native PDF is trivially under any token budget, so
+# we skip the count_tokens round-trip and inline it directly (the common path).
+# ~2 MB of PDF is comfortably inside the budget even for dense text.
+_SMALL_PDF_FAST_PATH_BYTES = 2 * 1024 * 1024
+
 # Maximum recursive split iterations before giving up on a stubborn section
 # (guards the truncation-retry work queue against an infinite loop).
 _MAX_SPLIT_ITERATIONS = 8
+
+# Quality-band gate (deterministic, runs before caching). The schema guarantees
+# shape; these guard substance. A summary below these floors is a degenerate
+# model output, not something to cache and serve downstream.
+_MIN_OVERALL_SUMMARY_WORDS = 40
 
 # Paragraph/section boundary for the long-input splitter: a blank line.
 _SECTION_BOUNDARY = re.compile(r"\n\s*\n")
@@ -133,6 +149,7 @@ class SummariseStage:
                 return cached
 
         summary, input_hash = self._summarise(pdf_path, instruction, summary_config)
+        self._check_quality(summary)
 
         summary.input_hash = input_hash
         summary.profile_hash = profile_hash
@@ -142,22 +159,44 @@ class SummariseStage:
         self._write_cache(cache_path, summary)
         return summary
 
+    @staticmethod
+    def _check_quality(summary: PaperSummary) -> None:
+        """Deterministic quality-band gate, run before caching the summary.
+
+        The structured-output schema guarantees shape, not substance: a degenerate
+        model output (no findings, a one-line overall summary) can parse cleanly.
+        Raise rather than cache and serve it downstream.
+
+        Raises:
+            SummaryQualityError: if the summary is below the quality floor.
+        """
+        if not summary.key_findings:
+            raise SummaryQualityError("summary has no key findings (the schema parsed but the content is degenerate)")
+        words = len(summary.overall_summary.split())
+        if words < _MIN_OVERALL_SUMMARY_WORDS:
+            raise SummaryQualityError(
+                f"overall_summary is only {words} words (floor is {_MIN_OVERALL_SUMMARY_WORDS}); likely truncated"
+            )
+
     # --- summarisation (single-call path first, then fallbacks) -------------- #
 
     def _summarise(self, pdf_path: Path, instruction: str, cfg: SummaryConfig) -> tuple[PaperSummary, str]:
         """Produce a PaperSummary; return it with the chosen ``input_hash``.
 
         Single-call native-PDF path first; falls back to extracted text + (if
-        still over budget) section-split. Never silently truncates input.
+        still over budget) section-split. Native PDF is used only when it is both
+        safe to inline (raw bytes under the request limit) AND under the token
+        budget; otherwise the text fallback runs. Never silently truncates input.
         """
         pdf_bytes = pdf_path.read_bytes()
-        native_doc = LLMDocument.from_pdf(pdf_bytes)
 
-        if self._fits_budget(native_doc, instruction):
+        if self._can_use_native_pdf(pdf_bytes, instruction):
+            native_doc = LLMDocument.from_pdf(pdf_bytes)
             summary = self._complete(native_doc, instruction, cfg)
             return summary, self._source_hash(pdf_path)
 
-        # Over the native-PDF budget -> fall back to F1 extracted text.
+        # Native PDF is too big to inline safely, or over the token budget -> fall
+        # back to F1 extracted text.
         if self._extractor is None:
             raise LLMError(
                 f"PDF '{pdf_path.name}' exceeds the native-PDF input budget and no extractor "
@@ -173,6 +212,23 @@ class SummariseStage:
         # Still over budget even as text -> section-split + carried-context reduce.
         summary = self._summarise_sectioned(extracted.full_text, instruction, cfg)
         return summary, extracted.content_hash
+
+    def _can_use_native_pdf(self, pdf_bytes: bytes, instruction: str) -> bool:
+        """True when the PDF is safe to inline AND fits the token budget.
+
+        Two guards, cheapest first:
+
+        1. raw-bytes size -- a PDF over :data:`_MAX_INLINE_PDF_BYTES` would inflate
+           past the ~32 MB request limit once base64-encoded, so it must take the
+           text fallback (no point counting tokens);
+        2. token budget -- but a *trivially small* PDF skips the ``count_tokens``
+           round-trip entirely (the small-PDF fast path, the common case).
+        """
+        if len(pdf_bytes) > _MAX_INLINE_PDF_BYTES:
+            return False
+        if len(pdf_bytes) <= _SMALL_PDF_FAST_PATH_BYTES:
+            return True
+        return self._fits_budget(LLMDocument.from_pdf(pdf_bytes), instruction)
 
     def _complete(self, document: LLMDocument, instruction: str, cfg: SummaryConfig) -> PaperSummary:
         """One structured-output call, with a recursive truncation-retry guard."""

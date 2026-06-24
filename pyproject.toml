@@ -5,8 +5,10 @@ description = "DownLow — the low-down on a research paper: context-steered sum
 requires-python = ">=3.11"
 readme = "README.md"
 dependencies = [
-    # LLM
-    "anthropic>=0.40",
+    # LLM -- floor pinned to the version shipping messages.parse / output_config
+    # (structured outputs), output_config.effort, adaptive thinking, and
+    # beta.messages (future Files-API native PDF). Older 0.x predates these.
+    "anthropic>=0.111",
     # Persistence
     "sqlmodel>=0.0.22",
     "alembic>=1.13",

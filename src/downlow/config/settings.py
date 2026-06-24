@@ -35,5 +35,12 @@ class Settings(BaseSettings):
     summary_model: str = "claude-sonnet-4-6"
     narration_model: str = "claude-sonnet-4-6"
 
+    # --- LLM transport (wired into the Anthropic adapter) ---
+    # Worst-case wall-clock is request_timeout x (max_retries + 1) since the SDK
+    # retries timeouts and connection errors too; keep request_timeout modest when
+    # max_retries is high (batch runs). Defaults: 2 retries, 600s timeout.
+    request_timeout: float = 600.0
+    max_retries: int = 2
+
     # --- Concurrency ---
     max_workers: int = 4
