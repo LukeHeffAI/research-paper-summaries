@@ -1,0 +1,33 @@
+{
+  "title": "Contrastive Pretraining Improves Zero-Shot Cross-Domain Transfer",
+  "overall_summary": "This paper studies whether a contrastive pretraining objective lets a vision-language model generalise to domains it never saw during training. The authors pretrain on a web-scale image-caption corpus and evaluate zero-shot classification on five held-out domains spanning natural images, sketches, and medical scans. They find that the contrastive objective consistently outperforms a supervised-pretraining baseline on the held-out domains, with the gap widening as the domain shift grows. The effect is strongest where the target domain shares low-level structure with the pretraining distribution and weakest on medical scans, where the authors caution that the model's confidence is poorly calibrated. The work positions contrastive pretraining as a practical route to robustness under distribution shift, while being careful not to overclaim: the gains are demonstrated on classification only, the medical result is flagged as preliminary, and the comparison holds the parameter count fixed but not the pretraining compute. The authors release their evaluation suite and pretrained checkpoints. The headline contribution is empirical rather than methodological: a controlled demonstration, across a graded set of domain shifts, that the choice of pretraining objective changes downstream out-of-distribution behaviour in a measurable and direction-consistent way.",
+  "key_findings": [
+    {
+      "statement": "Contrastive pretraining beats supervised pretraining on zero-shot transfer to held-out domains.",
+      "evidence": "+6.1 average accuracy points across five held-out domains (Table 2)"
+    },
+    {
+      "statement": "The advantage grows with the size of the domain shift.",
+      "evidence": "from +1.3 points on near-domain to +9.7 points on the most-shifted domain"
+    },
+    {
+      "statement": "The model's confidence is poorly calibrated on the medical-scan domain.",
+      "evidence": null
+    }
+  ],
+  "contributions": [
+    "A controlled empirical comparison of pretraining objectives under graded distribution shift.",
+    "A released five-domain zero-shot evaluation suite and pretrained checkpoints."
+  ],
+  "methods": "Two models of equal parameter count are pretrained on the same image-caption corpus, one with a contrastive objective and one with supervised classification, then evaluated zero-shot on five held-out domains. The single most load-bearing assumption is that holding parameter count fixed isolates the objective; pretraining compute is not held constant.",
+  "gaps_and_limitations": [
+    "Gains are shown for classification only; generative or dense-prediction transfer is untested.",
+    "The medical-scan result is flagged by the authors as preliminary.",
+    "A reviewer might note that pretraining compute differs between the two arms, partially confounding the objective comparison."
+  ],
+  "relevance_to_profile": "This bears directly on your focus on cross-domain generalisation: the graded-shift evaluation protocol is a control you could reuse, and the calibration failure on medical scans is a concrete failure mode worth probing for your own multimodal models. Their contrastive objective plays the role your alignment objective plays, though the analogy breaks down on the dense-prediction tasks you care about, which they do not test.",
+  "input_hash": "",
+  "profile_hash": "",
+  "model": "",
+  "prompt_version": ""
+}

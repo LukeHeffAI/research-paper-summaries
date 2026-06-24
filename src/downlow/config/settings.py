@@ -25,9 +25,22 @@ class Settings(BaseSettings):
     database_url: str = "sqlite:///./data/downlow.db"
     data_dir: Path = Path("./data")
 
+    # --- Config file (typed application config: profiles + summary model) ---
+    # The ONLY filesystem pointer Settings holds for the config-file layer; the
+    # composition root passes this to ``config.profiles.load_config``. ``core``
+    # never sees the path -- it receives the parsed, typed config.
+    config_file: Path = Path("./config/downlow.toml")
+
     # --- Models (per-stage ModelConfig refinement arrives in Phase 1) ---
     summary_model: str = "claude-sonnet-4-6"
     narration_model: str = "claude-sonnet-4-6"
+
+    # --- LLM transport (wired into the Anthropic adapter) ---
+    # Worst-case wall-clock is request_timeout x (max_retries + 1) since the SDK
+    # retries timeouts and connection errors too; keep request_timeout modest when
+    # max_retries is high (batch runs). Defaults: 2 retries, 600s timeout.
+    request_timeout: float = 600.0
+    max_retries: int = 2
 
     # --- Concurrency ---
     max_workers: int = 4
