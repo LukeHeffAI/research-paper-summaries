@@ -112,8 +112,8 @@ omit = [
 ]
 
 [tool.coverage.report]
-# F1 (INGEST) lands the first real coverage; ratchet 60 -> 70 -> 80 as F2-F5 land.
-fail_under = 60
+# Ratchet 60 -> 70 -> 80 as F2-F5 land. F2 (SUMMARISE) brings the suite to ~80%.
+fail_under = 70
 show_missing = true
 exclude_lines = [
     "pragma: no cover",

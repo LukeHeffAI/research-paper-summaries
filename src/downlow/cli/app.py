@@ -10,6 +10,7 @@ from __future__ import annotations
 import typer
 
 from downlow import __version__
+from downlow.cli.commands.summarise import summarise
 
 app = typer.Typer(
     help="DownLow — the low-down on a research paper.",
@@ -28,3 +29,6 @@ def version() -> None:
 def info() -> None:
     """Show a short orientation message."""
     typer.echo("DownLow scaffold (Phase 0). Pipeline commands land in Phase 1 — see PROJECT_PLAN.md.")
+
+
+app.command()(summarise)

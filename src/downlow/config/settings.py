@@ -25,6 +25,12 @@ class Settings(BaseSettings):
     database_url: str = "sqlite:///./data/downlow.db"
     data_dir: Path = Path("./data")
 
+    # --- Config file (typed application config: profiles + summary model) ---
+    # The ONLY filesystem pointer Settings holds for the config-file layer; the
+    # composition root passes this to ``config.profiles.load_config``. ``core``
+    # never sees the path -- it receives the parsed, typed config.
+    config_file: Path = Path("./config/downlow.toml")
+
     # --- Models (per-stage ModelConfig refinement arrives in Phase 1) ---
     summary_model: str = "claude-sonnet-4-6"
     narration_model: str = "claude-sonnet-4-6"

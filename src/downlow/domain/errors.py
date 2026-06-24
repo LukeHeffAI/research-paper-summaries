@@ -28,3 +28,35 @@ class EmptyExtractionError(DownLowError):
     def __init__(self, message: str = "PDF yielded no extractable text", *, page_count: int | None = None) -> None:
         self.page_count = page_count
         super().__init__(message)
+
+
+class LLMError(DownLowError):
+    """Raised when an LLM call fails in a modelled, expected way.
+
+    The :class:`LLMClient` port maps a provider's structured-output, refusal, or
+    transport failures onto this provider-agnostic error so ``core`` can ``except``
+    it without importing the ``anthropic`` SDK. The adapter is the only layer that
+    knows about ``RateLimitError`` / ``APIStatusError`` and friends; everything it
+    cannot recover from surfaces here.
+    """
+
+    def __init__(self, message: str, *, request_id: str | None = None, stop_reason: str | None = None) -> None:
+        self.request_id = request_id
+        self.stop_reason = stop_reason
+        super().__init__(message)
+
+
+class TruncatedResponseError(LLMError):
+    """Raised when the model stopped because it hit ``max_tokens``.
+
+    A truncated response cannot be trusted even when the structured-output schema
+    parses (the JSON may be cut off mid-value, or whole required sections missing).
+    SUMMARISE's long-input machinery catches this to recursively split-and-retry;
+    a single-call path surfaces it so the caller can raise ``max_tokens``. Mirrors
+    the legacy "never silently accept a cut-off response" guard.
+    """
+
+    def __init__(
+        self, message: str = "model response truncated at max_tokens", *, request_id: str | None = None
+    ) -> None:
+        super().__init__(message, request_id=request_id, stop_reason="max_tokens")
