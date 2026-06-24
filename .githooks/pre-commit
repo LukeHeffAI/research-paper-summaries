@@ -1,0 +1,11 @@
+#!/usr/bin/env sh
+# Format staged Python files at commit time so the blocking CI lint gate can never
+# trip on formatting. Versioned hook: enable once per clone with
+#   git config core.hooksPath .githooks
+# `legacy/` is excluded (reference-only, intentionally unformatted).
+set -eu
+files=$(git diff --cached --name-only --diff-filter=ACM | grep '\.py$' | grep -v '^legacy/' || true)
+[ -z "$files" ] && exit 0
+uv run --frozen ruff check --fix --quiet $files || true
+uv run --frozen ruff format --quiet $files
+git add $files

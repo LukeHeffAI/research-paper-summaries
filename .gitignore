@@ -3514,3 +3514,20 @@ main.py
 users/*/documents/pdf_texts.json
 progress_journal.md
 __pycache__/audio_processing.cpython-310.pyc
+
+# --- DownLow ---
+.venv/
+.env
+__pycache__/
+*.py[cod]
+.ruff_cache/
+.mypy_cache/
+.pytest_cache/
+.coverage
+htmlcov/
+data/*.db
+data/cache/
+dist/
+build/
+*.egg-info/
+.claude/settings.local.json
