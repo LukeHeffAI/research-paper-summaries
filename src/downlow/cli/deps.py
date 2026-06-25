@@ -26,6 +26,7 @@ from downlow.adapters.storage.filesystem_store import FilesystemArtifactStore
 from downlow.adapters.tts.elevenlabs_client import ElevenLabsTTSClient
 from downlow.config.profiles import DownLowConfig, load_config
 from downlow.config.settings import Settings
+from downlow.core.services.backfill import BackfillService
 from downlow.core.services.filename import FilenameHeuristic
 from downlow.core.services.library import LibraryService
 from downlow.core.services.processing import ProcessingService
@@ -38,10 +39,12 @@ from downlow.core.stages.summarise import SummariseStage
 from downlow.domain.entities import (
     Episode,
     EpisodePaper,
+    OutputProfileRecord,
     Paper,
     PipelineRun,
     PodcastAsset,
     ReportAsset,
+    ResearchProfileRecord,
     StageRun,
     Summary,
     User,
@@ -335,6 +338,34 @@ def library_session(settings: Settings | None = None) -> Iterator[LibraryService
     try:
         with Session(engine) as session:
             yield LibraryService(SqlModelRepository(session, Paper, clock=SystemClock()))
+    finally:
+        engine.dispose()
+
+
+@contextmanager
+def backfill_session(settings: Settings | None = None) -> Iterator[BackfillService]:
+    """Open a DB session and yield a wired :class:`BackfillService` (Phase 2.3).
+
+    The composition root for ``dl backfill``: builds the engine, ensures the schema
+    exists, opens one short-lived session, wires the User / ResearchProfile /
+    OutputProfile repositories onto it, and seeds the default owning user FIRST so the
+    backfill dedupes the legacy ``luke`` profile against the existing id-1 owner rather
+    than inserting a second one. Needs no API key (it touches only the DB).
+    """
+    settings = settings or Settings()
+    engine = create_db_engine(settings.database_url)
+    create_all(engine)  # idempotent dev bootstrap; a real deployment runs Alembic
+    clock = SystemClock()
+    try:
+        with Session(engine) as session:
+            # Seed the owning user (id 1, "luke") so the legacy luke profile dedupes
+            # against it -- mirrors processing_session's ordering discipline.
+            _ensure_default_user(SqlModelRepository(session, User, clock=clock))
+            yield BackfillService(
+                users=SqlModelRepository(session, User, clock=clock),
+                research_profiles=SqlModelRepository(session, ResearchProfileRecord, clock=clock),
+                output_profiles=SqlModelRepository(session, OutputProfileRecord, clock=clock),
+            )
     finally:
         engine.dispose()
 
