@@ -140,6 +140,30 @@ def test_suggest_for_pdf_no_metadata_uses_pdf_hash_fallback(tmp_path: Path) -> N
     assert suggestion.filename.endswith(".pdf")
 
 
+def test_suggest_for_pdf_large_pdf_uses_text_fallback_then_builds(tmp_path: Path) -> None:
+    # The full compose path (extract -> suggest) over a PDF above the inline cap: the
+    # extractor's front-matter text feeds the LLM, and the suggestion still builds.
+    big = b"%PDF" + b"x" * (21 * 1024 * 1024)
+    long_text = "Title Line\nAda Lovelace\n" + "body " * 5000
+    extracted = ExtractedText(
+        full_text=long_text,
+        pages=[long_text],
+        page_count=1,
+        is_scanned=False,
+        source_hash="src",
+        content_hash="cnt",
+    )
+    extractor = FakePdfExtractor(result=extracted)
+    llm = FakeLLMClient(result=PaperMetadata(title="Zero Shot Transfer", authors=["Ada Lovelace"], year=2020))
+    heuristic, _ = _heuristic(llm=llm, extractor=extractor)
+    pdf = _write_pdf(tmp_path / "big.pdf", big)
+
+    suggestion = heuristic.suggest_for_pdf(pdf, _cfg())
+
+    assert suggestion.filename == "lovelace-2020-zero-shot-transfer.pdf"
+    assert not llm.calls[0].document.is_pdf  # text fallback was used end-to-end
+
+
 # --------------------------------------------------------------------------- #
 # apply: the only filesystem mutation -- non-interactive + safe.              #
 # --------------------------------------------------------------------------- #
@@ -177,6 +201,16 @@ def test_apply_rejects_a_filename_with_a_separator(tmp_path: Path) -> None:
     pdf = _write_pdf(tmp_path / "source.pdf")
     with pytest.raises(ValueError, match="bare name"):
         FilenameHeuristic.apply(pdf, "../escape.pdf")
+
+
+def test_apply_rejects_an_absolute_path_filename(tmp_path: Path) -> None:
+    # The security-critical guard must reject an absolute path too, not just a
+    # relative escape -- an absolute target would write outside the PDF's directory.
+    pdf = _write_pdf(tmp_path / "source.pdf", b"%PDF-source")
+    with pytest.raises(ValueError, match="bare name"):
+        FilenameHeuristic.apply(pdf, "/etc/evil.pdf")
+    assert pdf.exists()  # source untouched
+    assert not Path("/etc/evil.pdf").exists()
 
 
 def test_apply_missing_source_raises(tmp_path: Path) -> None:

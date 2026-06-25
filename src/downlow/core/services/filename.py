@@ -108,7 +108,17 @@ class FilenameHeuristic:
             LLMError: if the PDF is over the inline limit and no extractor is
                 configured for the text fallback, or on a modelled provider failure.
         """
-        document = self._document_for(pdf_path)
+        return self._extract_from_bytes(pdf_path, pdf_path.read_bytes(), cfg)
+
+    def _extract_from_bytes(self, pdf_path: Path, pdf_bytes: bytes, cfg: MetadataConfig) -> PaperMetadata:
+        """Extract metadata from already-read ``pdf_bytes`` (so the caller reads once).
+
+        The shared core of :meth:`extract` and :meth:`suggest_for_pdf`: both pass the
+        bytes they have already read, so a large PDF is read from disk exactly once
+        per invocation. ``pdf_path`` is still needed for the extractor (which reads
+        per its own contract) and for error messages.
+        """
+        document = self._document_for(pdf_path, pdf_bytes)
         return self._llm.complete_structured(
             document=document,
             system=METADATA_SYSTEM_PROMPT,
@@ -118,9 +128,8 @@ class FilenameHeuristic:
             effort=cfg.model.effort,
         )
 
-    def _document_for(self, pdf_path: Path) -> LLMDocument:
-        """Build the LLM input: the native PDF, or front-matter text when too large."""
-        pdf_bytes = pdf_path.read_bytes()
+    def _document_for(self, pdf_path: Path, pdf_bytes: bytes) -> LLMDocument:
+        """Build the LLM input from ``pdf_bytes``: native PDF, or front-matter text when too large."""
         if len(pdf_bytes) <= _MAX_INLINE_PDF_BYTES:
             return LLMDocument.from_pdf(pdf_bytes)
 
@@ -145,12 +154,15 @@ class FilenameHeuristic:
     def suggest_for_pdf(self, pdf_path: Path, cfg: MetadataConfig) -> FilenameSuggestion:
         """Extract metadata for ``pdf_path`` and build its suggested filename.
 
-        The convenience composition of :meth:`extract` + :meth:`suggest`; the PDF
-        bytes are read once and reused for the missing-metadata fallback hash so the
-        suggestion is unique even when extraction yields nothing.
+        The convenience composition of :meth:`extract` + :meth:`suggest`. The PDF is
+        read from disk exactly once here and the bytes are threaded into both the
+        extraction document and the missing-metadata fallback hash, so a large PDF is
+        never read twice and the suggestion is unique even when extraction yields
+        nothing.
         """
-        metadata = self.extract(pdf_path, cfg)
-        filename = self.suggest(metadata, pdf_bytes=pdf_path.read_bytes())
+        pdf_bytes = pdf_path.read_bytes()
+        metadata = self._extract_from_bytes(pdf_path, pdf_bytes, cfg)
+        filename = self.suggest(metadata, pdf_bytes=pdf_bytes)
         return FilenameSuggestion(metadata=metadata, filename=filename)
 
     # --- 3. apply (the only filesystem mutation) ----------------------------- #
