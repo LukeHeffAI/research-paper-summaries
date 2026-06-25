@@ -14,6 +14,7 @@ introduce them.
 
 from __future__ import annotations
 
+from datetime import datetime
 from pathlib import Path
 from typing import Protocol, TypeVar, runtime_checkable
 
@@ -307,4 +308,82 @@ class AudioMixer(Protocol):
 
     def mix(self, rendered: list[RenderedTurn]) -> bytes:
         """Mix ``rendered`` turns into one finished episode (mp3 bytes)."""
+        ...
+
+
+# --------------------------------------------------------------------------- #
+# Repository (Phase 2.0) -- provider-agnostic persistence of domain entities.   #
+# --------------------------------------------------------------------------- #
+
+# The persisted domain entity a repository works with. Bound to BaseModel so the
+# port deals only in pure pydantic entities (``domain.entities``) -- no SQLModel
+# row, no ``Session``, and no dialect ever reaches ``core``.
+EntityT = TypeVar("EntityT", bound=BaseModel)
+
+
+@runtime_checkable
+class Repository(Protocol[EntityT]):
+    """CRUD persistence for one domain-entity type, provider-agnostic.
+
+    The default backend is ``adapters.db.repositories.SqlModelRepository`` (the only
+    place ``sqlmodel`` / a ``Session`` / the engine appear); a fake in-memory
+    repository is what ``core`` tests use. No persistence-layer type -- not a
+    SQLModel ``table=True`` row, not a ``Session``, not a SQL dialect -- appears in
+    this contract. ``core`` services depend on this port, so the SQLite-now /
+    Postgres-later switch is purely a ``DATABASE_URL`` change.
+
+    The repository deals in pure :mod:`downlow.domain.entities` objects. The adapter
+    maps each entity to/from its SQLModel row, stamps server-assigned fields
+    (``id``, timestamps via an injected :class:`Clock`), and never lets a row leak
+    out.
+
+    Contract:
+
+    * :meth:`add` -- persist ``entity`` and return it with its store-assigned ``id``
+      (and timestamps) populated. Idempotency of *content* is the caller's concern
+      (e.g. an upsert keyed on a content hash is a service/adapter detail); ``add``
+      itself inserts.
+    * :meth:`get` -- return the entity with primary key ``entity_id``, or ``None``
+      when it does not exist (never raises for a miss).
+    * :meth:`list` -- return all entities, optionally narrowed by simple equality
+      ``filters`` (column name -> value), in a stable order. Provider-agnostic:
+      ``filters`` are plain field/value pairs, never a SQL expression.
+    * :meth:`delete` -- remove the entity with ``entity_id``; return ``True`` if a
+      row was removed, ``False`` if none matched (idempotent delete).
+    """
+
+    def add(self, entity: EntityT) -> EntityT:
+        """Persist ``entity``; return it with ``id`` / timestamps populated."""
+        ...
+
+    def get(self, entity_id: int) -> EntityT | None:
+        """Return the entity with this primary key, or ``None`` if absent."""
+        ...
+
+    def list(self, **filters: object) -> list[EntityT]:
+        """Return entities, optionally narrowed by equality ``filters``."""
+        ...
+
+    def delete(self, entity_id: int) -> bool:
+        """Delete the entity with this primary key; ``True`` if one was removed."""
+        ...
+
+
+# --------------------------------------------------------------------------- #
+# Clock (Phase 2.0) -- injectable time, so timestamps are deterministic.        #
+# --------------------------------------------------------------------------- #
+
+
+@runtime_checkable
+class Clock(Protocol):
+    """The current time, injected rather than read from the wall clock.
+
+    Persistence (and any cache-key) timestamping goes through this port so snapshot
+    tests and fixtures can pin time and stay deterministic. The CLI/composition root
+    injects a real UTC clock (``adapters.db`` provides one); tests inject a frozen
+    clock. ``core`` never calls :func:`datetime.now` directly.
+    """
+
+    def now(self) -> datetime:
+        """The current timezone-aware (UTC) instant."""
         ...
