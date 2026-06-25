@@ -2,11 +2,16 @@
 
 The regression guard for the B1-B3 bugs the fake-only unit tests masked: it drives
 ``ProcessingService`` + ``StoreStage`` over the real ``SqlModelRepository`` + a real
-``Session`` on a temp-file SQLite DB (FK pragma on), with fakes ONLY for the
-external boundaries (LLM / TTS / mixer / PDF / renderer / artifact store). No
-network, no real ``typst`` / ``ffmpeg`` binary.
+``Session`` on a real DB, with fakes ONLY for the external boundaries (LLM / TTS /
+mixer / PDF / renderer / artifact store). No network, no real ``typst`` / ``ffmpeg``
+binary.
 
-It proves on real SQLite what the fakes could not:
+**Backend-agnostic (Phase 2.2):** the ``engine`` fixture delegates to the shared
+``DATABASE_URL``-driven ``db_engine`` (temp-file SQLite locally with the FK pragma
+on; Postgres with a clean schema per test in CI), so the same assertions prove
+portability on both backends.
+
+It proves on a real DB what the fakes could not:
 
 * **idempotency (B2/B3):** running ``process_paper`` twice yields exactly ONE Paper
   row (deduped by ``source_hash``) and the run is flipped IN PLACE -- two runs, two
@@ -24,14 +29,13 @@ Marked ``integration`` (real DB), though it needs no external service/binary.
 
 from __future__ import annotations
 
-from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
 from sqlalchemy.engine import Engine
 from sqlmodel import Session
 
-from downlow.adapters.db.engine import SystemClock, create_all, create_db_engine
+from downlow.adapters.db.engine import SystemClock
 from downlow.adapters.db.repositories import SqlModelRepository
 from downlow.config.models import ModelConfig
 from downlow.config.profiles import (
@@ -121,14 +125,15 @@ def _narration_script() -> NarrationScript:
 
 
 @pytest.fixture
-def engine(tmp_path: Path) -> Iterator[Engine]:
-    """A real temp-file SQLite engine (FK pragma on) with the schema created."""
-    eng = create_db_engine(f"sqlite:///{(tmp_path / 'proc.db').as_posix()}")
-    create_all(eng)
-    try:
-        yield eng
-    finally:
-        eng.dispose()
+def engine(db_engine: Engine) -> Engine:
+    """A real engine with the schema created -- SQLite locally, Postgres in CI.
+
+    Backend-agnostic (Phase 2.2): delegates to the shared ``db_engine`` fixture,
+    which honours ``DATABASE_URL`` (temp-file SQLite by default, Postgres when set,
+    with a clean schema per test). The same ProcessingService idempotency / FK /
+    resume-from-failure assertions therefore run unchanged on both backends.
+    """
+    return db_engine
 
 
 @pytest.fixture
@@ -211,7 +216,7 @@ def test_user_seed_lets_first_write_succeed_without_fk_error(engine: Engine, pdf
         assert result.run.status is RunStatus.SUCCEEDED
 
 
-def test_running_twice_is_idempotent_on_real_sqlite(engine: Engine, pdf: Path, tmp_path: Path) -> None:
+def test_running_twice_is_idempotent_on_real_db(engine: Engine, pdf: Path, tmp_path: Path) -> None:
     """B2/B3: two runs -> one Paper, two single terminal runs, no duplicates."""
     with Session(engine) as session:
         _seed_user(session)
@@ -245,8 +250,8 @@ def test_running_twice_is_idempotent_on_real_sqlite(engine: Engine, pdf: Path, t
         assert len(summaries.list()) == 1
 
 
-def test_resume_after_render_failure_on_real_sqlite(engine: Engine, pdf: Path, tmp_path: Path) -> None:
-    """Resume-from-failure on real SQLite: one FAILED run, Summary persisted, retry OK."""
+def test_resume_after_render_failure_on_real_db(engine: Engine, pdf: Path, tmp_path: Path) -> None:
+    """Resume-from-failure on a real DB: one FAILED run, Summary persisted, retry OK."""
     cache_dir = tmp_path / "cache"
     with Session(engine) as session:
         _seed_user(session)

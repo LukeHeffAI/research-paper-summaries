@@ -148,3 +148,20 @@ indexed querying on Postgres -- ships as an Alembic migration (`ALTER ... TYPE
 jsonb USING column::jsonb`), reviewed.
 
 Source: Phase 2.0 PR #9 review.
+
+---
+
+## Phase 2.2 Postgres-readiness audit -- result (no blocking gaps)
+
+The 2.1a audit of `adapters/db/{engine,tables}.py` + `migrations/env.py` found the
+hot path already portable: timestamps are `DateTime(timezone=True)` with a
+read-path UTC re-attach (`_utc_aware`); enums are `Enum(native_enum=False)` portable
+VARCHARs; PKs are SQLAlchemy `Integer` (-> Postgres identity); there are **no**
+server-side defaults (all defaults Python-side / via the injected `Clock`, no
+`func.now()`); `render_as_batch` + the FK `PRAGMA` are gated on `_is_sqlite` only;
+the user<->voice FK cycle is a post-create `use_alter` ALTER (works on both
+backends); `compare_type=True` is set so cross-backend drift is caught. The single
+known non-blocking gap remains the `json`-vs-`jsonb` entry above (acceptable: these
+columns are read/written whole, never queried by content). Driver: `psycopg[binary]`
+under the `postgres` extra; the same `create_db_engine` serves both backends. Proof
+is the CI `test-postgres` job (no local Postgres).

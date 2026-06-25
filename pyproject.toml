@@ -32,6 +32,13 @@ api = [
     "fastapi>=0.115",
     "uvicorn[standard]>=0.30",
 ]
+# Postgres driver (Phase 2.2 — Postgres-readiness). SQLite-only users do NOT need
+# this; install with `uv sync --extra postgres` and point DATABASE_URL at a
+# `postgresql+psycopg://...` URL. psycopg3 (the `psycopg` package, NOT psycopg2);
+# `[binary]` ships the prebuilt libpq wheel so no system libpq/compiler is needed.
+postgres = [
+    "psycopg[binary]>=3.2",
+]
 dev = [
     "pytest>=8.3",
     "pytest-cov>=5.0",
