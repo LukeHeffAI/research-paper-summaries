@@ -30,30 +30,24 @@ from __future__ import annotations
 
 import hashlib
 import os
-import re
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
 from downlow.config.profiles import ReportConfig
+from downlow.core.naming import slugify  # re-exported below for backward compatibility (F3 imports)
 from downlow.core.prompts.report import REPORT_TITLE_SYSTEM_PROMPT, build_report_title_instruction
 from downlow.domain.errors import LLMError
 from downlow.domain.ports import ArtifactStore, LLMClient, LLMDocument, ReportRenderer
 from downlow.domain.schemas import PaperSummary, ReportData, ReportMeta, ReportTitleSuggestion
+
+__all__ = ["RenderResult", "RenderStage", "slugify"]
 
 _REPORTS_SUBDIR = "reports"
 
 # The fallback document title when no usable paper title is available, or for a
 # multi-paper report with no LLM override. Mirrors the legacy report's heading.
 _DEFAULT_MULTI_TITLE = "Research Summaries"
-
-# Slug safety bounds: lowercase ASCII alnum + single hyphens, no leading/trailing
-# hyphen, capped so a pathological title cannot produce an unwieldy filename.
-_MAX_SLUG_LEN = 80
-_FALLBACK_SLUG = "report"
-
-# Non-[a-z0-9] runs collapse to a single hyphen during slugify.
-_NON_SLUG_CHARS = re.compile(r"[^a-z0-9]+")
 
 
 @dataclass
@@ -275,26 +269,6 @@ class RenderStage:
         if cache_path is None:
             return
         _atomic_write(cache_path, pdf_bytes)
-
-
-def slugify(title: str) -> str:
-    """Derive a lowercase, hyphen-separated, filesystem-safe slug from ``title``.
-
-    Deterministic and path-safe by construction: only ``[a-z0-9-]`` survive, so the
-    result can never contain a path separator (``/`` / ``\\``), ``..``, a leading
-    dot, a space, or any shell-significant character -- the model (or a paper title)
-    can never escape the reports directory. An empty result (a title of only
-    punctuation / non-ASCII) falls back to :data:`_FALLBACK_SLUG`. Length is capped
-    so a pathological title cannot produce an unwieldy filename.
-
-    Pure and module-level so it is unit-tested in isolation. Same title in => same
-    slug out (idempotent re-renders overwrite in place rather than duplicating).
-    """
-    lowered = title.strip().lower()
-    slug = _NON_SLUG_CHARS.sub("-", lowered).strip("-")
-    if len(slug) > _MAX_SLUG_LEN:
-        slug = slug[:_MAX_SLUG_LEN].rstrip("-")
-    return slug or _FALLBACK_SLUG
 
 
 def _atomic_write(path: Path, data: bytes) -> None:

@@ -11,6 +11,7 @@ import typer
 
 from downlow import __version__
 from downlow.cli.commands.narrate import narrate
+from downlow.cli.commands.rename import rename
 from downlow.cli.commands.report import report
 from downlow.cli.commands.summarise import summarise
 
@@ -36,3 +37,4 @@ def info() -> None:
 app.command()(summarise)
 app.command()(report)
 app.command()(narrate)
+app.command()(rename)

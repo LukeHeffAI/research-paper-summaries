@@ -49,6 +49,21 @@ effort = "low"
 prompt_version = "report-title-v1"
 
 
+# --- F5: the paper-filename metadata extractor ------------------------------- #
+# A tiny, cheap structured-output call that extracts a paper's title/authors/year
+# faithfully (empty when absent -- never fabricated); a pure deterministic builder
+# then turns it into a `surname-year-title-slug.pdf` filename. `core` receives the
+# typed values only; the on-disk filename is built in code, never by the model.
+
+[metadata]
+# Bump when core/prompts/metadata.py or the PaperMetadata schema changes.
+prompt_version = "metadata-v1"
+# Metadata is small, so the call is cheap: a small max_tokens and low effort.
+model = "claude-sonnet-4-6"
+max_tokens = 512
+effort = "low"
+
+
 # --- NARRATE (F4): the two-presenter interview podcast ----------------------- #
 # All the owner-tunable podcast knobs (docs/podcast_design.md section 7). Later
 # these graduate to a DB-backed Setting registry seeded from here; for now the
