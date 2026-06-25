@@ -10,6 +10,7 @@ from __future__ import annotations
 import typer
 
 from downlow import __version__
+from downlow.cli.commands.narrate import narrate
 from downlow.cli.commands.summarise import summarise
 
 app = typer.Typer(
@@ -32,3 +33,4 @@ def info() -> None:
 
 
 app.command()(summarise)
+app.command()(narrate)

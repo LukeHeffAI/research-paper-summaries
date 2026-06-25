@@ -26,6 +26,72 @@ effort = "low"
 prompt_version = "summary-v1"
 
 
+# --- NARRATE (F4): the two-presenter interview podcast ----------------------- #
+# All the owner-tunable podcast knobs (docs/podcast_design.md section 7). Later
+# these graduate to a DB-backed Setting registry seeded from here; for now the
+# config file is the source of initial values. `core` receives typed values only.
+
+[podcast]
+# Default script input is the WHOLE PAPER (the summary is a cheaper alternative).
+script_source = "paper"          # "paper" | "summary"
+target_minutes = 8               # target runtime; a guide, not a hard cap
+# Narration max_tokens is larger than summary and MUST stream: the adapter streams
+# above its 16k threshold, so 32000 routes through the streaming path automatically.
+model = "claude-sonnet-4-6"
+max_tokens = 32000
+effort = "medium"
+prompt_version = "narration-v1"
+persona_version = "persona-v1"
+
+[voices]
+# Distinct stock ElevenLabs voice ids for the two presenters (Phase 1). The author
+# voice becomes a cloned voice in Phase 7. These are the ElevenLabs public stock
+# voices "Adam" (host) and "Rachel" (author) as starting points; override freely.
+host = "pNInz6obpgDQGcFmaJgB"
+author = "21m00Tcm4TlvDq8ikWAM"
+default_preset = "measured"      # fallback preset when a tone matches nothing
+
+[tone_presets]
+# Maps a substring that may appear in a turn's free-text `tone` to one of OUR
+# preset names (warm|curious|measured|excited|serious). The tts adapter turns the
+# preset into ElevenLabs stability/similarity/style. First match wins, high-energy
+# cues checked first (see the adapter's tone->preset logic).
+excited = "excited"
+delighted = "excited"
+fast = "excited"
+hooked = "excited"
+curious = "curious"
+"naive-but-sharp" = "curious"
+warm = "warm"
+welcoming = "warm"
+relaxed = "warm"
+serious = "serious"
+landing = "serious"
+measured = "measured"
+building = "measured"
+
+[mix]
+# The audio-mixer constants (docs/podcast_design.md section 6); VTTD defaults.
+bed_volume_db = -22.0
+sting_volume_db = -3.0
+crossfade_ms = 120
+intro_fade_ms = 2000
+outro_fade_ms = 3000
+inter_turn_gap_ms = 250
+target_loudness_dbfs = -16.0
+
+[music]
+# Cue -> asset filename, resolved under the assets dir (the committed repo
+# `assets/audio/` by default; override via the ASSETS_DIR env var to a $DATA_DIR
+# path for your own curated theme). A missing asset is logged and skipped so the
+# episode still renders. Generated-theme-via-ElevenLabs is FUTURE (FUTURE_FIXES.md);
+# these point at the shipped placeholder stings.
+intro = "intro.wav"
+outro = "outro.wav"
+sting = "sting.wav"
+bed = "bed.wav"
+
+
 # --- Research profiles (the reader's research identity) ---------------------- #
 # Seeded from legacy/data/research_data.json.
 

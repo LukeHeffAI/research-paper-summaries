@@ -67,3 +67,44 @@ Re-add correctly:
 
 Source: claude-api skill (Files API beta `files-api-2025-04-14`; beta messages on
 `client.beta.messages.*`).
+
+---
+
+## Generated podcast theme + richer SFX via ElevenLabs (deferred from F4)
+
+F4 ships placeholder/curated music assets (committed `assets/audio/*.wav`:
+intro/outro/sting/bed) resolved by cue, with a graceful missing-asset skip in the
+mixer. The two follow-ups:
+
+- **Generated theme music** via ElevenLabs (the music/sound-generation API) to
+  replace the placeholder stings -- a generation path behind the audio/tts ports
+  so the theme and the rare SFX cue can be synthesised, cached, and reused.
+- **Richer SFX beds** -- the 3-layer mixer already supports `under` beds and
+  non-`under` stings; populate a small curated/generated SFX library and let the
+  narration prompt emit sparse `sfx` cues.
+
+The schema (`Turn.type == "sfx"`, `cue`, `under`) and the mixer layers already
+exist, so this is a population + generation-adapter change, not a rewrite.
+
+Source: docs/podcast_design.md section 6 (Music & SFX) + the F4 brief.
+
+---
+
+## Sectioned-narration `_reduce` duplicates structural music turns
+
+`NarrateStage._reduce` (core/stages/narrate.py) merges per-section partial scripts
+by concatenating their `turns`. The required structure (cold-open host turn,
+`music intro`, ... `music outro`) appears in *each* section's partial, so a
+multi-section paper produces an episode with duplicated intro/outro/cold-open
+`music` turns mid-timeline. Rarely fires (Sonnet 4.6 has a 1M context, so almost
+every paper scripts in one call), but the reduce path is wrong when it does.
+
+Fix options:
+- dedupe structural `music` cues in `_reduce` -- keep the first section's cold-open
+  + intro and the last section's outro, drop interior intro/outro turns; or
+- budget/instruct the reduce so only the first section emits the cold open + intro
+  and only the last emits the outro (a per-section prompt variant); or
+- run a final reduce LLM pass that re-stitches the concatenated turns into one
+  coherent arc (mirrors SUMMARISE's reduce, at a token cost).
+
+Sibling to the S4 summarise reduce entry. Source: F4 PR #6 review.

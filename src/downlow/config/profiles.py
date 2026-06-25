@@ -21,7 +21,8 @@ from typing import TypeVar
 from pydantic import BaseModel, Field
 
 from downlow.config.models import ModelConfig
-from downlow.domain.schemas import OutputProfile, ResearchProfile
+from downlow.domain.enums import SpeakerRole
+from downlow.domain.schemas import OutputProfile, ResearchProfile, VoiceRef
 
 _ProfileT = TypeVar("_ProfileT", ResearchProfile, OutputProfile)
 
@@ -38,6 +39,57 @@ class SummaryConfig(BaseModel):
     prompt_version: str = "summary-v1"
 
 
+# --------------------------------------------------------------------------- #
+# NARRATE config (F4) -- podcast / voices / tone-presets / mix / music.        #
+# These are the owner-tunable knobs from docs/podcast_design.md section 7.     #
+# `core` receives the typed values; it never reads the config file.            #
+# --------------------------------------------------------------------------- #
+
+
+class MixConfig(BaseModel):
+    """The audio-mixer constants (docs/podcast_design.md section 6).
+
+    VTTD defaults as starting points. Negative dB values attenuate; ms values are
+    fade / gap durations. The PydubAudioMixer adapter receives this typed bundle.
+    """
+
+    bed_volume_db: float = -22.0
+    sting_volume_db: float = -3.0
+    crossfade_ms: int = 120
+    intro_fade_ms: int = 2000
+    outro_fade_ms: int = 3000
+    inter_turn_gap_ms: int = 250
+    target_loudness_dbfs: float = -16.0
+
+
+class NarrationConfig(BaseModel):
+    """The NARRATE stage's resolved model + prompt + production configuration.
+
+    One typed bundle for the stage and the adapters: the LLM model config and
+    prompt/persona versions (the script-cache key), the ``script_source``
+    (paper|summary) and ``target_minutes`` budget, the role->voice mapping, the
+    tone->preset map, the music-asset cue->filename map, and the mix constants.
+    """
+
+    model: ModelConfig
+    prompt_version: str = "narration-v1"
+    persona_version: str = "persona-v1"
+    script_source: str = "paper"
+    target_minutes: int = 8
+    voices: list[VoiceRef] = Field(default_factory=list)
+    tone_presets: dict[str, str] = Field(default_factory=dict)
+    default_preset: str = "measured"
+    music_assets: dict[str, str] = Field(default_factory=dict)
+    mix: MixConfig = Field(default_factory=MixConfig)
+
+    def voice_for(self, role: SpeakerRole) -> str | None:
+        """The configured voice id for ``role``, or ``None`` if unmapped."""
+        for ref in self.voices:
+            if ref.role == role:
+                return ref.voice_id
+        return None
+
+
 class DownLowConfig(BaseModel):
     """The fully-resolved config-file contents the composition root hands down.
 
@@ -48,6 +100,7 @@ class DownLowConfig(BaseModel):
     research_profile: ResearchProfile
     output_profile: OutputProfile
     summary: SummaryConfig
+    narration: NarrationConfig
 
     # All defined profiles, kept so the CLI can select a non-default one by name.
     research_profiles: dict[str, ResearchProfile] = Field(default_factory=dict)
@@ -99,13 +152,95 @@ def load_config(
         prompt_version=summary_section.get("prompt_version", "summary-v1"),
     )
 
+    narration = _load_narration(raw)
+
     return DownLowConfig(
         research_profile=research,
         output_profile=output,
         summary=summary,
+        narration=narration,
         research_profiles=research_profiles,
         output_profiles=output_profiles,
     )
+
+
+def _load_narration(raw: dict[str, object]) -> NarrationConfig:
+    """Parse the [podcast]/[voices]/[tone_presets]/[mix]/[music] sections.
+
+    Tolerant of missing sections: every field has a default, so a config file
+    without a podcast section still yields a usable :class:`NarrationConfig` (the
+    NARRATE stage then fails clearly only if it actually needs an absent voice id).
+    """
+    podcast = _section(raw, "podcast")
+    voices_section = _section(raw, "voices")
+    tone_section = _section(raw, "tone_presets")
+    mix_section = _section(raw, "mix")
+    music_section = _section(raw, "music")
+
+    voices: list[VoiceRef] = []
+    host_id = voices_section.get("host")
+    if isinstance(host_id, str) and host_id:
+        voices.append(VoiceRef(role=SpeakerRole.HOST, voice_id=host_id))
+    author_id = voices_section.get("author")
+    if isinstance(author_id, str) and author_id:
+        voices.append(VoiceRef(role=SpeakerRole.AUTHOR, voice_id=author_id))
+
+    tone_presets = {str(k): _as_str(v, "") for k, v in tone_section.items()}
+    music_assets = {str(k): _as_str(v, "") for k, v in music_section.items()}
+
+    mix = MixConfig(
+        bed_volume_db=_as_float(mix_section, "bed_volume_db", -22.0),
+        sting_volume_db=_as_float(mix_section, "sting_volume_db", -3.0),
+        crossfade_ms=_as_int(mix_section, "crossfade_ms", 120),
+        intro_fade_ms=_as_int(mix_section, "intro_fade_ms", 2000),
+        outro_fade_ms=_as_int(mix_section, "outro_fade_ms", 3000),
+        inter_turn_gap_ms=_as_int(mix_section, "inter_turn_gap_ms", 250),
+        target_loudness_dbfs=_as_float(mix_section, "target_loudness_dbfs", -16.0),
+    )
+
+    return NarrationConfig(
+        model=ModelConfig(
+            id=_as_str(podcast.get("model"), "claude-sonnet-4-6"),
+            max_tokens=_as_int(podcast, "max_tokens", 32000),
+            effort=_as_str(podcast.get("effort"), "medium"),
+        ),
+        prompt_version=_as_str(podcast.get("prompt_version"), "narration-v1"),
+        persona_version=_as_str(podcast.get("persona_version"), "persona-v1"),
+        script_source=_as_str(podcast.get("script_source"), "paper"),
+        target_minutes=_as_int(podcast, "target_minutes", 8),
+        voices=voices,
+        tone_presets=tone_presets,
+        default_preset=_as_str(voices_section.get("default_preset"), "measured"),
+        music_assets=music_assets,
+        mix=mix,
+    )
+
+
+def _section(raw: dict[str, object], name: str) -> dict[str, object]:
+    """Return the named table from the parsed TOML, or an empty dict."""
+    value = raw.get(name, {})
+    return value if isinstance(value, dict) else {}
+
+
+def _as_str(value: object, default: str) -> str:
+    """Coerce a TOML scalar to ``str`` (so mypy sees a typed result), else default."""
+    return value if isinstance(value, str) else default
+
+
+def _as_int(section: dict[str, object], key: str, default: int) -> int:
+    """Read ``key`` from ``section`` as an ``int`` (bools rejected), else default."""
+    value = section.get(key)
+    return value if isinstance(value, int) and not isinstance(value, bool) else default
+
+
+def _as_float(section: dict[str, object], key: str, default: float) -> float:
+    """Read ``key`` from ``section`` as a ``float`` (ints accepted), else default."""
+    value = section.get(key)
+    if isinstance(value, bool):
+        return default
+    if isinstance(value, int | float):
+        return float(value)
+    return default
 
 
 def _select(profiles: dict[str, _ProfileT], name: str | None, kind: str) -> _ProfileT:
