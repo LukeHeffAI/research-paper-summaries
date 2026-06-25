@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -22,8 +23,26 @@ class Settings(BaseSettings):
     elevenlabs_api_key: str | None = None
 
     # --- Infra ---
-    database_url: str = "sqlite:///./data/downlow.db"
     data_dir: Path = Path("./data")
+    # The persistence URL (SQLModel / Alembic). Defaults to a SQLite file under
+    # ``DATA_DIR`` (derived below when DATABASE_URL is unset); Postgres-ready --
+    # set ``DATABASE_URL=postgresql+psycopg://...`` to switch backends with no code
+    # change. The DB layer (``adapters/db``) applies SQLite-only tweaks only when
+    # the URL is SQLite, so the same code path serves Postgres.
+    database_url: str = ""
+
+    @model_validator(mode="after")
+    def _default_database_url(self) -> Settings:
+        """Derive the SQLite ``database_url`` under ``DATA_DIR`` when unset.
+
+        Keeps the DB file co-located with the other artifacts ``DATA_DIR`` owns; an
+        explicit ``DATABASE_URL`` (SQLite path or a Postgres URL) overrides this and
+        is left untouched.
+        """
+        if not self.database_url:
+            db_path = (self.data_dir / "downlow.db").as_posix()
+            self.database_url = f"sqlite:///{db_path}"
+        return self
 
     # --- Audio assets (F4) ---
     # Where the NARRATE mixer resolves music/sfx cue files. Defaults to the

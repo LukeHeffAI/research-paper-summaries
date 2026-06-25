@@ -34,6 +34,27 @@ jobs:
       - name: Mypy
         run: uv run mypy src/downlow/
 
+  # 2.2a -- schema-drift gate: the baseline migration must build the schema and the
+  # SQLModel models must agree with the committed migrations (autogenerate finds no
+  # diff). A drift between code and migrations fails CI here. Targets a throwaway
+  # SQLite DB via DATABASE_URL so it never touches a real data dir.
+  migrations:
+    runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: sqlite:///./ci-drift-check.db
+    steps:
+      - uses: actions/checkout@v6
+      - uses: astral-sh/setup-uv@v8.2.0
+        with:
+          enable-cache: true
+      - run: uv sync --frozen --extra dev
+      - name: Upgrade head builds the schema
+        run: uv run alembic upgrade head
+      - name: Models and migrations agree (no drift)
+        run: uv run alembic check
+      - name: Downgrade base is clean
+        run: uv run alembic downgrade base
+
   test:
     runs-on: ubuntu-latest
     steps:
