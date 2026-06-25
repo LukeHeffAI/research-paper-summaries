@@ -108,3 +108,43 @@ Fix options:
   coherent arc (mirrors SUMMARISE's reduce, at a token cost).
 
 Sibling to the S4 summarise reduce entry. Source: F4 PR #6 review.
+
+---
+
+## Repository `add`/`delete` commit without rollback (unit-of-work)
+
+`SqlModelRepository.add` / `.delete` (adapters/db/repositories.py) call
+`session.commit()` but have **no** `try/except -> session.rollback()`. This is a
+deliberate "the composition root owns the session" design (the CLI now / a FastAPI
+`get_session` dependency / a worker later opens and disposes the session and is
+responsible for rolling back a failed unit of work), and it is documented on both
+methods. But there is currently no enforcing wrapper, so a caller that does several
+`add`s and crashes mid-way leaves the session in a partially-committed, undefined
+state unless it rolls back itself.
+
+Fix when the STORE stage / services land (Phase 2.1):
+- add a unit-of-work context manager at the composition root that `commit`s on
+  success and `rollback`s on any exception, and have services run their writes
+  inside it; or
+- make the repository methods flush (not commit) and let the unit-of-work own the
+  single commit/rollback for the whole operation.
+
+Source: Phase 2.0 PR #9 review.
+
+---
+
+## JSON columns are `sqlalchemy.JSON` (Postgres `json`, not `jsonb`)
+
+The list/dict columns in adapters/db/tables.py (`authors`, the structured
+`Summary` fields, `requested_stages`, `narration_script`, ...) use the portable
+`sqlalchemy.JSON` type. On SQLite it is fine; on Postgres it maps to `json` (text
+storage), **not** `jsonb` -- so it cannot be GIN-indexed and containment / path
+queries on it are slow. Acceptable now (single-user SQLite; these columns are
+read/written whole, never queried by their contents).
+
+Switch the relevant column(s) to `postgresql.JSONB` (e.g. via a
+`JSON().with_variant(JSONB(), "postgresql")` type) **when** any JSON column needs
+indexed querying on Postgres -- ships as an Alembic migration (`ALTER ... TYPE
+jsonb USING column::jsonb`), reviewed.
+
+Source: Phase 2.0 PR #9 review.

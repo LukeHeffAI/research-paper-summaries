@@ -9,11 +9,12 @@ JSON-shaped fields, enum columns, and the Episode/EpisodePaper join.
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from sqlmodel import Session
 
+from downlow.adapters.db.engine import create_db_engine
 from downlow.adapters.db.repositories import SqlModelRepository
 from downlow.domain.entities import (
     Episode,
@@ -52,6 +53,39 @@ def test_add_stamps_updated_at_when_the_entity_has_one(db_session: Session, froz
 
     assert saved.created_at == datetime(2026, 1, 1, 12, 0, 0, tzinfo=UTC)
     assert saved.updated_at == datetime(2026, 1, 1, 12, 0, 0, tzinfo=UTC)
+
+
+def test_cold_read_returns_tz_aware_utc_timestamps(db_session: Session, db_url: str, frozen_clock: FrozenClock) -> None:
+    """The load-bearing claim: a value read back from SQLite is tz-aware UTC.
+
+    The ``add()`` return value carries the clock's tz-aware instant and never
+    touches the DB, so it cannot prove the read path. Here we ``add`` through one
+    session, then open a SECOND engine on the same file -- a genuine cold read that
+    bypasses the first session's identity map and forces SQLAlchemy to materialise
+    the stored (naive) datetime. The ``_utc_aware`` / ``_row_dump`` re-attach-UTC
+    path must turn it back into a tz-aware UTC value (matching Postgres, where the
+    column is tz-aware natively).
+    """
+    repo: Repository[User] = SqlModelRepository(db_session, User, clock=frozen_clock)
+    saved = repo.add(User(username="luke"))
+    assert saved.id is not None
+    db_session.close()  # drop the identity map so the next read hits the DB
+
+    cold_engine = create_db_engine(db_url)
+    try:
+        with Session(cold_engine) as cold_session:
+            cold_repo: Repository[User] = SqlModelRepository(cold_session, User, clock=frozen_clock)
+            fetched = cold_repo.get(saved.id)
+    finally:
+        cold_engine.dispose()
+
+    assert fetched is not None
+    assert fetched.created_at is not None
+    # tz-aware (not naive) AND a true UTC offset of zero, regardless of backend.
+    assert fetched.created_at.tzinfo is not None
+    assert fetched.created_at.utcoffset() == timedelta(0)
+    # and the instant itself survived the round-trip.
+    assert fetched.created_at == datetime(2026, 1, 1, 12, 0, 0, tzinfo=UTC)
 
 
 def test_add_ignores_caller_supplied_id(db_session: Session, frozen_clock: FrozenClock) -> None:

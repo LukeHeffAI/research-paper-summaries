@@ -17,7 +17,6 @@ task); this repository does not own the session's lifecycle, only its CRUD.
 
 from __future__ import annotations
 
-from datetime import datetime
 from typing import Any, Generic, TypeVar, cast
 
 from pydantic import BaseModel
@@ -65,22 +64,36 @@ class SqlModelRepository(Generic[EntityT]):
 
         Stamps ``created_at`` (and ``updated_at`` when the entity has one) from the
         injected clock if unset, so callers in ``core`` never touch the wall clock.
-        """
-        data = entity.model_dump()
-        now = self._clock.now()
-        fields = set(self._entity_type.model_fields)
-        if _CREATED_FIELD in fields and data.get(_CREATED_FIELD) is None:
-            data[_CREATED_FIELD] = now
-        if _UPDATED_FIELD in fields and data.get(_UPDATED_FIELD) is None:
-            data[_UPDATED_FIELD] = now
-        # Never let a caller-supplied id force an insert id; the store assigns it.
-        data["id"] = None
+        The entity -> row conversion goes through the row's ``from_entity`` seam
+        (the mirror of ``to_entity`` on the read path), so there is a single,
+        tested entity<->row mapping rather than two divergent ones.
 
-        row = self._row_type(**data)
+        The caller owns the session: this commits, but does NOT roll back on
+        failure -- a failed unit of work must be rolled back by the composition root
+        (see FUTURE_FIXES, "repository add/delete + rollback").
+        """
+        prepared = self._stamp(entity)
+        row = self._row_type.from_entity(prepared)  # type: ignore[attr-defined]
         self._session.add(row)
         self._session.commit()
         self._session.refresh(row)
         return self._to_entity(row)
+
+    def _stamp(self, entity: EntityT) -> EntityT:
+        """Return a copy of ``entity`` with the id cleared and timestamps stamped.
+
+        Clears any caller-supplied ``id`` (the store assigns it) and fills
+        ``created_at`` / ``updated_at`` from the injected clock when unset, so both
+        the in-path conversion and the timestamping happen before ``from_entity``.
+        """
+        now = self._clock.now()
+        fields = set(self._entity_type.model_fields)
+        updates: dict[str, Any] = {"id": None}
+        if _CREATED_FIELD in fields and getattr(entity, _CREATED_FIELD, None) is None:
+            updates[_CREATED_FIELD] = now
+        if _UPDATED_FIELD in fields and getattr(entity, _UPDATED_FIELD, None) is None:
+            updates[_UPDATED_FIELD] = now
+        return entity.model_copy(update=updates)
 
     def get(self, entity_id: int) -> EntityT | None:
         """Return the entity with this primary key, or ``None`` if absent."""
@@ -110,7 +123,11 @@ class SqlModelRepository(Generic[EntityT]):
         return [self._to_entity(row) for row in rows]
 
     def delete(self, entity_id: int) -> bool:
-        """Delete the entity with this primary key; ``True`` if one was removed."""
+        """Delete the entity with this primary key; ``True`` if one was removed.
+
+        Commits but does not roll back on failure (the composition root owns the
+        session and its rollback -- see FUTURE_FIXES).
+        """
         row = self._session.get(self._row_type, entity_id)
         if row is None:
             return False
@@ -126,8 +143,3 @@ class SqlModelRepository(Generic[EntityT]):
         SQLite-naive timestamp comes back tz-aware UTC, matching Postgres.
         """
         return cast(EntityT, row.to_entity())  # type: ignore[attr-defined]
-
-
-def utc_now() -> datetime:
-    """The real UTC now (adapter-layer convenience for non-injected callers)."""
-    return SystemClock().now()

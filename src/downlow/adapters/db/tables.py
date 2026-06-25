@@ -1,19 +1,25 @@
 """SQLModel ``table=True`` rows -- the DB schema, and the only place it lives.
 
 The single layer where ``sqlmodel`` / ``sqlalchemy`` appear for persistence. Each
-table maps 1:1 to a pure :mod:`downlow.domain.entities` entity; ``to_entity`` /
-``from_entity`` helpers convert between the two so a row never leaks past this
-adapter (``core`` and the :class:`~downlow.domain.ports.Repository` port see only
-the pure pydantic entities).
+table maps 1:1 to a pure :mod:`downlow.domain.entities` entity through one matched
+pair of seams the generic ``SqlModelRepository`` drives: ``from_entity`` on the way
+in (insert) and ``to_entity`` on the way out (read). Both are exercised on every
+round-trip, so there is a single tested entity<->row mapping and a row never leaks
+past this adapter (``core`` and the :class:`~downlow.domain.ports.Repository` port
+see only the pure pydantic entities).
 
 SQLite now, Postgres-ready (PROJECT_PLAN -> Data Model):
 
-* integer surrogate primary keys, timezone-aware ``datetime`` columns;
-* enums stored as their ``str`` value via a portable ``String`` column (not a
-  native DB ``ENUM`` type, which SQLite lacks and Postgres makes migration-heavy);
+* integer surrogate primary keys, timezone-aware ``datetime`` columns
+  (``DateTime(timezone=True)``; SQLite stores naive, so the read seam re-attaches
+  UTC -- see ``_utc_aware`` -- giving tz-aware UTC on both backends);
+* enums stored via ``sqlalchemy.Enum(..., native_enum=False)`` -- a portable
+  VARCHAR that converts enum<->string both ways (not a native DB ``ENUM`` type,
+  which SQLite lacks and Postgres makes migration-heavy);
 * list/dict fields stored in portable ``JSON`` columns
-  (``sqlalchemy.JSON`` works on both backends), declared with ``sa_column`` so
-  SQLModel does not try to map a ``list[str]`` to a scalar;
+  (``sqlalchemy.JSON`` works on both backends -- Postgres ``json``, not ``jsonb``;
+  see FUTURE_FIXES if a JSON column ever needs indexed querying), declared with
+  ``sa_column`` so SQLModel does not try to map a ``list[str]`` to a scalar;
 * explicit status enums on the run/stage tables rather than the legacy "which
   nullable column is populated" convention.
 

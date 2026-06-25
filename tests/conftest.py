@@ -51,9 +51,19 @@ def frozen_clock() -> FrozenClock:
 
 
 @pytest.fixture
-def db_engine(tmp_path: Path) -> Iterator[Engine]:
+def db_url(tmp_path: Path) -> str:
+    """The SQLite URL of the per-test temp DB (so tests can open a fresh engine).
+
+    A *file* DB (not ``:memory:``) so a second engine -- a genuine cold read -- sees
+    the same data and bypasses the first session's identity map.
+    """
+    return f"sqlite:///{(tmp_path / 'test.db').as_posix()}"
+
+
+@pytest.fixture
+def db_engine(db_url: str) -> Iterator[Engine]:
     """A temp-file SQLite engine with the full schema created (no Alembic needed)."""
-    engine = create_db_engine(f"sqlite:///{(tmp_path / 'test.db').as_posix()}")
+    engine = create_db_engine(db_url)
     create_all(engine)
     try:
         yield engine
