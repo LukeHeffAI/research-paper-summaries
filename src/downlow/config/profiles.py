@@ -16,13 +16,15 @@ from __future__ import annotations
 
 import tomllib
 from pathlib import Path
-from typing import TypeVar
+from typing import Literal, TypeVar
 
 from pydantic import BaseModel, Field
 
 from downlow.config.models import ModelConfig
 from downlow.domain.enums import SpeakerRole
 from downlow.domain.schemas import OutputProfile, ResearchProfile, VoiceRef
+
+TitleMode = Literal["templated", "llm"]
 
 _ProfileT = TypeVar("_ProfileT", ResearchProfile, OutputProfile)
 
@@ -57,7 +59,7 @@ class ReportConfig(BaseModel):
     """
 
     template_version: str = "report-v1"
-    title_mode: str = "templated"
+    title_mode: TitleMode = "templated"
     model: ModelConfig = Field(
         default_factory=lambda: ModelConfig(id="claude-sonnet-4-6", max_tokens=200, effort="low")
     )
@@ -202,7 +204,7 @@ def _load_report(raw: dict[str, object]) -> ReportConfig:
     report = _section(raw, "report")
     return ReportConfig(
         template_version=_as_str(report.get("template_version"), "report-v1"),
-        title_mode=_as_str(report.get("title_mode"), "templated"),
+        title_mode=_as_title_mode(report.get("title_mode")),
         model=ModelConfig(
             id=_as_str(report.get("model"), "claude-sonnet-4-6"),
             max_tokens=_as_int(report, "max_tokens", 200),
@@ -210,6 +212,20 @@ def _load_report(raw: dict[str, object]) -> ReportConfig:
         ),
         prompt_version=_as_str(report.get("prompt_version"), "report-title-v1"),
     )
+
+
+def _as_title_mode(value: object) -> TitleMode:
+    """Validate the [report].title_mode literal at config-parse time.
+
+    A typo (e.g. ``templatd``) raises :class:`ConfigError` here rather than
+    silently falling through to the templated branch at render time. An absent
+    value defaults to ``templated``.
+    """
+    if value is None:
+        return "templated"
+    if value == "templated" or value == "llm":
+        return value
+    raise ConfigError(f"[report].title_mode must be 'templated' or 'llm', got {value!r}")
 
 
 def _load_narration(raw: dict[str, object]) -> NarrationConfig:

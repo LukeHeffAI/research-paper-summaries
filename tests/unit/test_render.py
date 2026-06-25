@@ -17,7 +17,7 @@ import pytest
 
 from downlow.config.models import ModelConfig
 from downlow.config.profiles import ReportConfig
-from downlow.core.stages.render import RenderStage, disambiguate_slug, slugify
+from downlow.core.stages.render import RenderStage, slugify
 from downlow.domain.errors import LLMError, TypstCompileError
 from downlow.domain.schemas import KeyFinding, PaperSummary, ReportData, ReportTitleSuggestion
 from tests.fakes.llm import FakeLLMClient
@@ -200,20 +200,12 @@ def test_slugify_caps_length() -> None:
     assert not slug.endswith("-")
 
 
-def test_disambiguate_slug_handles_collisions() -> None:
-    taken: set[str] = {"ood-generalisation"}
-    assert disambiguate_slug("fresh", taken) == "fresh"
-    assert disambiguate_slug("ood-generalisation", taken) == "ood-generalisation-2"
-    taken.add("ood-generalisation-2")
-    assert disambiguate_slug("ood-generalisation", taken) == "ood-generalisation-3"
-
-
-def test_two_titles_can_collide_then_disambiguate() -> None:
-    # Two different titles that slugify identically -> collision handling avoids a clobber.
-    a = slugify("OOD Generalisation!")
-    b = slugify("ood   generalisation")
-    assert a == b == "ood-generalisation"
-    assert disambiguate_slug(b, {a}) == "ood-generalisation-2"
+def test_two_different_titles_can_slugify_identically() -> None:
+    # Two distinct titles can collapse to the same slug; collision-safe naming
+    # needs a slug<->paper registry (the future ReportAsset DB) -- until then a
+    # true collision between DIFFERENT papers overwrites (see FUTURE_FIXES.md), and
+    # the same paper re-rendered to the same slug is the desired update behaviour.
+    assert slugify("OOD Generalisation!") == slugify("ood   generalisation") == "ood-generalisation"
 
 
 # --------------------------------------------------------------------------- #
@@ -275,6 +267,33 @@ def test_cache_miss_then_hit_skips_recompile(tmp_path: Path) -> None:
     assert renderer.call_count == 1  # hit -> NOT recompiled
     assert second.pdf_bytes == first.pdf_bytes
     assert store.stored["reports/cached-paper.pdf"] == first.pdf_bytes
+
+
+def test_cache_hit_skips_redundant_store_put_but_keeps_the_ref(tmp_path: Path) -> None:
+    cache_dir = tmp_path / "cache"
+    stage, _, store = _stage(cache_dir=cache_dir)
+
+    first = stage.run([_summary("Cached Paper")], _report_cfg())
+    assert store.put_calls == ["reports/cached-paper.pdf"]  # one write on the miss
+
+    second = stage.run([_summary("Cached Paper")], _report_cfg())
+    # The artifact already exists -> the redundant re-write is skipped...
+    assert store.put_calls == ["reports/cached-paper.pdf"]
+    # ...but the reference is still resolved (via ref_for) and matches the write.
+    assert second.ref == first.ref == "fake://reports/cached-paper.pdf"
+
+
+def test_cache_hit_rewrites_when_artifact_was_pruned(tmp_path: Path) -> None:
+    cache_dir = tmp_path / "cache"
+    stage, _, store = _stage(cache_dir=cache_dir)
+
+    stage.run([_summary("Cached Paper")], _report_cfg())
+    store.stored.clear()  # simulate the artifact being pruned while the cache survives
+
+    result = stage.run([_summary("Cached Paper")], _report_cfg())
+    # The render cache still hits (no recompile), but the missing artifact is re-put.
+    assert store.put_calls == ["reports/cached-paper.pdf", "reports/cached-paper.pdf"]
+    assert store.stored["reports/cached-paper.pdf"] == result.pdf_bytes
 
 
 def test_force_bypasses_the_cache(tmp_path: Path) -> None:

@@ -142,15 +142,18 @@ class RenderStage:
         data = self.assemble(summaries, resolved_title, cfg)
 
         cache_key = self._cache_key(summaries, resolved_title, cfg.template_version)
+        artifact_key = self._artifact_key(slug)
         if not force:
             cached = self._load_cache(cache_key)
             if cached is not None:
-                ref = self._store.put(self._artifact_key(slug), cached)
+                # Skip the redundant re-write when the artifact is already stored
+                # (the common cache-hit case); only put it back if it is missing.
+                ref = self._ensure_stored(artifact_key, cached)
                 return RenderResult(pdf_bytes=cached, slug=slug, title=resolved_title, ref=ref)
 
         pdf_bytes = self._renderer.render(data)
         self._write_cache(cache_key, pdf_bytes)
-        ref = self._store.put(self._artifact_key(slug), pdf_bytes)
+        ref = self._store.put(artifact_key, pdf_bytes)
         return RenderResult(pdf_bytes=pdf_bytes, slug=slug, title=resolved_title, ref=ref)
 
     @staticmethod
@@ -224,6 +227,20 @@ class RenderStage:
         """The logical ArtifactStore key for the report PDF (``reports/<slug>.pdf``)."""
         return f"{_REPORTS_SUBDIR}/{slug}.pdf"
 
+    def _ensure_stored(self, artifact_key: str, pdf_bytes: bytes) -> str:
+        """Store the report only if it is not already present; return its reference.
+
+        On a render-cache hit the compiled PDF is usually already in the artifact
+        store from the run that compiled it, so re-writing it every run is wasted
+        I/O. When :meth:`ArtifactStore.exists` is true (the common case) the
+        reference is resolved via :meth:`ArtifactStore.ref_for` with no write;
+        otherwise the artifact was pruned / never written, so ``put`` it (idempotent,
+        so the rare-miss write is safe).
+        """
+        if self._store.exists(artifact_key):
+            return self._store.ref_for(artifact_key)
+        return self._store.put(artifact_key, pdf_bytes)
+
     # --- optional render cache ----------------------------------------------- #
 
     def _cache_key(self, summaries: list[PaperSummary], title: str, template_version: str) -> str:
@@ -278,23 +295,6 @@ def slugify(title: str) -> str:
     if len(slug) > _MAX_SLUG_LEN:
         slug = slug[:_MAX_SLUG_LEN].rstrip("-")
     return slug or _FALLBACK_SLUG
-
-
-def disambiguate_slug(slug: str, taken: set[str]) -> str:
-    """Return ``slug`` or, if it collides with a ``taken`` one, a suffixed variant.
-
-    Two different titles can slugify to the same string (e.g. "OOD Generalisation!"
-    and "OOD generalisation"); when several reports land in the same directory, this
-    avoids one clobbering another by appending ``-2``, ``-3``, ... until the name is
-    free. Deterministic given the iteration order of ``taken`` checks. The base
-    ``slug`` is returned unchanged when there is no collision (the common case).
-    """
-    if slug not in taken:
-        return slug
-    n = 2
-    while f"{slug}-{n}" in taken:
-        n += 1
-    return f"{slug}-{n}"
 
 
 def _atomic_write(path: Path, data: bytes) -> None:

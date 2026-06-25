@@ -195,12 +195,32 @@ class ArtifactStore(Protocol):
       ``data`` bytes, writes them durably (atomically), and returns the stored
       reference (a string the store can later resolve back to the bytes).
 
+    Contract for :meth:`exists`:
+
+    * returns whether an artifact is already stored under ``key``, so a stage can
+      skip a redundant re-write on a cache hit (RENDER) without re-serialising.
+
+    Contract for :meth:`ref_for`:
+
+    * returns the logical reference a ``put`` under ``key`` would yield, WITHOUT
+      writing -- so a stage that skipped the write (the artifact already
+      :meth:`exists`) can still report the reference. The reference is deterministic
+      in ``key``.
+
     The write is idempotent: re-putting the same key overwrites in place, so a
     re-run of a stage does not duplicate or corrupt the artifact.
     """
 
     def put(self, key: str, data: bytes) -> str:
         """Store ``data`` under ``key`` and return its logical reference."""
+        ...
+
+    def exists(self, key: str) -> bool:
+        """True when an artifact is already stored under ``key``."""
+        ...
+
+    def ref_for(self, key: str) -> str:
+        """The logical reference for ``key`` without writing (deterministic in key)."""
         ...
 
 

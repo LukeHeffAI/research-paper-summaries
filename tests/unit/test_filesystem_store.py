@@ -2,12 +2,15 @@
 
 Real filesystem (a tmp dir), no network: asserts the store writes bytes under a
 logical key beneath its base dir, returns a resolvable reference, overwrites in
-place on a re-put (idempotent), and creates nested key directories.
+place on a re-put (idempotent), creates nested key directories, reports existence
++ a write-free reference, and rejects a ``../``-escape (path-containment).
 """
 
 from __future__ import annotations
 
 from pathlib import Path
+
+import pytest
 
 from downlow.adapters.storage.filesystem_store import FilesystemArtifactStore
 
@@ -36,3 +39,27 @@ def test_put_is_idempotent_overwrite(tmp_path: Path) -> None:
     assert ref2 == str((tmp_path / "reports" / "r.pdf").resolve())
     # No leftover temp files from the atomic write.
     assert sorted(p.name for p in (tmp_path / "reports").iterdir()) == ["r.pdf"]
+
+
+def test_exists_and_ref_for(tmp_path: Path) -> None:
+    store = FilesystemArtifactStore(tmp_path)
+    assert store.exists("reports/r.pdf") is False
+    ref_before = store.ref_for("reports/r.pdf")  # write-free
+    assert not (tmp_path / "reports" / "r.pdf").exists()  # ref_for did not write
+
+    put_ref = store.put("reports/r.pdf", b"%PDF")
+    assert store.exists("reports/r.pdf") is True
+    assert store.ref_for("reports/r.pdf") == put_ref == ref_before  # ref is key-deterministic
+
+
+@pytest.mark.parametrize("bad_key", ["../escape.pdf", "reports/../../escape.pdf", "a/../../b.pdf"])
+def test_put_rejects_path_escape(tmp_path: Path, bad_key: str) -> None:
+    store = FilesystemArtifactStore(tmp_path / "root")
+    with pytest.raises(ValueError, match="escapes the artifact root"):
+        store.put(bad_key, b"x")
+
+
+def test_exists_rejects_path_escape(tmp_path: Path) -> None:
+    store = FilesystemArtifactStore(tmp_path / "root")
+    with pytest.raises(ValueError, match="escapes the artifact root"):
+        store.exists("../../etc/passwd")

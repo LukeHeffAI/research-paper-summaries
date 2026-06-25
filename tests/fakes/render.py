@@ -57,8 +57,18 @@ class FakeArtifactStore:
     """In-memory ``ArtifactStore``: records puts and returns a logical reference."""
 
     stored: dict[str, bytes] = field(default_factory=dict)
+    put_calls: list[str] = field(default_factory=list)
 
     def put(self, key: str, data: bytes) -> str:
-        """Record ``data`` under ``key`` and return a ``fake://`` reference."""
+        """Record ``data`` under ``key`` (spying the call) and return a ``fake://`` reference."""
+        self.put_calls.append(key)
         self.stored[key] = data
+        return f"fake://{key}"
+
+    def exists(self, key: str) -> bool:
+        """True when ``key`` has already been put (so a cache hit can skip re-write)."""
+        return key in self.stored
+
+    def ref_for(self, key: str) -> str:
+        """The reference for ``key`` without writing (matches :meth:`put`'s ref)."""
         return f"fake://{key}"
