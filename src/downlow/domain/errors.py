@@ -62,6 +62,33 @@ class TruncatedResponseError(LLMError):
         super().__init__(message, request_id=request_id, stop_reason="max_tokens")
 
 
+class TTSError(DownLowError):
+    """Raised when a text-to-speech synthesis call fails in a modelled way.
+
+    The :class:`~downlow.domain.ports.TTSClient` port maps a provider's
+    rate-limit / transport / quota failures onto this provider-agnostic error so
+    ``core`` can ``except`` it without importing the ``elevenlabs`` SDK. The adapter
+    is the only layer that knows the provider's exception types; everything it
+    cannot recover from after its own retry/backoff surfaces here.
+    """
+
+    def __init__(self, message: str, *, status_code: int | None = None) -> None:
+        self.status_code = status_code
+        super().__init__(message)
+
+
+class NarrationQualityError(DownLowError):
+    """Raised when a structurally-valid narration script fails the quality gate.
+
+    The structured-output schema guarantees *shape* (the right turn fields) but not
+    *substance*: a model can return an empty ``turns`` list, speech turns with no
+    text, or a host that monologues (the asymmetry collapsed). NARRATE runs cheap
+    deterministic checks (>=1 speech turn per role, non-empty speech text, the host
+    a minority of the spoken words) and raises this rather than synthesising and
+    caching a degenerate episode.
+    """
+
+
 class SummaryQualityError(DownLowError):
     """Raised when a structurally-valid summary fails the quality-band gate.
 

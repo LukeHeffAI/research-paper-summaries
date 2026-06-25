@@ -31,12 +31,12 @@ from __future__ import annotations
 import hashlib
 import json
 import os
-import re
 import tempfile
 from pathlib import Path
 
 from downlow.config.profiles import SummaryConfig
 from downlow.core.prompts.summary import SUMMARY_SYSTEM_PROMPT, build_context_prompt
+from downlow.core.stages.textsplit import split_text
 from downlow.domain.errors import LLMError, SummaryQualityError, TruncatedResponseError
 from downlow.domain.ports import LLMClient, LLMDocument, PdfExtractor
 from downlow.domain.schemas import OutputProfile, PaperSummary, ResearchProfile
@@ -68,9 +68,6 @@ _MAX_SPLIT_ITERATIONS = 8
 # shape; these guard substance. A summary below these floors is a degenerate
 # model output, not something to cache and serve downstream.
 _MIN_OVERALL_SUMMARY_WORDS = 40
-
-# Paragraph/section boundary for the long-input splitter: a blank line.
-_SECTION_BOUNDARY = re.compile(r"\n\s*\n")
 
 
 class SummariseStage:
@@ -256,7 +253,7 @@ class SummariseStage:
         except TruncatedResponseError:
             if document.is_pdf or document.text is None or iteration >= _MAX_SPLIT_ITERATIONS:
                 raise
-            halves = self._split_text(document.text)
+            halves = split_text(document.text)
             if len(halves) < 2:
                 raise
             partials = [
@@ -273,7 +270,7 @@ class SummariseStage:
         then merged via a final reduce call. Truncated sections recurse via
         :meth:`_complete_with_retry`.
         """
-        sections = self._split_text(text)
+        sections = split_text(text)
         partials: list[PaperSummary] = []
         carried = ""
         for section in sections:
@@ -308,29 +305,6 @@ class SummariseStage:
         """True when the document + steering fit the input budget (count_tokens)."""
         tokens = self._llm.count_tokens(document=document, system=SUMMARY_SYSTEM_PROMPT, instruction=instruction)
         return tokens <= self._input_budget
-
-    @staticmethod
-    def _split_text(text: str) -> list[str]:
-        """Split ``text`` into two roughly-equal halves on a section boundary.
-
-        Used both for the section-split path and for recursive truncation-retry.
-        Splits at the blank-line boundary nearest the midpoint so a section is not
-        cut mid-paragraph; falls back to a hard midpoint split if there is no
-        boundary. Returns ``[text]`` unchanged when it cannot be split.
-        """
-        boundaries = [m.start() for m in _SECTION_BOUNDARY.finditer(text)]
-        if not boundaries:
-            mid = len(text) // 2
-            if mid == 0:
-                return [text]
-            return [text[:mid], text[mid:]]
-        target = len(text) // 2
-        split_at = min(boundaries, key=lambda b: abs(b - target))
-        left = text[:split_at].strip()
-        right = text[split_at:].strip()
-        if not left or not right:
-            return [text]
-        return [left, right]
 
     # --- cache keys + provenance hashes -------------------------------------- #
 

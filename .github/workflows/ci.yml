@@ -42,8 +42,11 @@ jobs:
         with:
           enable-cache: true
       - run: uv sync --frozen --extra dev
+      - name: Install ffmpeg (NARRATE audio integration tests)
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
       - name: Run tests with coverage
         run: uv run pytest --cov=downlow --cov-report=term-missing
-      # Phase 1: when the integration render/audio tests land, install the `typst`
-      # binary (typst-community/setup-typst) and `ffmpeg` (apt) here — unit tests
-      # need neither. Phase 9: add a Docker build + Trivy `scan` job.
+      # Phase 1: when the integration RENDER tests land, install the `typst` binary
+      # (typst-community/setup-typst) here too — those don't need ffmpeg. The audio
+      # `integration/` tests need ffmpeg (installed above). Phase 9: add a Docker
+      # build + Trivy `scan` job.

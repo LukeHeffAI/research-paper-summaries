@@ -25,6 +25,12 @@ class Settings(BaseSettings):
     database_url: str = "sqlite:///./data/downlow.db"
     data_dir: Path = Path("./data")
 
+    # --- Audio assets (F4) ---
+    # Where the NARRATE mixer resolves music/sfx cue files. Defaults to the
+    # committed repo ``assets/audio/`` (shipped placeholder intro/outro/sting/bed);
+    # override (ASSETS_DIR) to a ``$DATA_DIR`` path for your own curated theme.
+    assets_dir: Path = Path("./assets/audio")
+
     # --- Config file (typed application config: profiles + summary model) ---
     # The ONLY filesystem pointer Settings holds for the config-file layer; the
     # composition root passes this to ``config.profiles.load_config``. ``core``

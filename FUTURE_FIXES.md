@@ -67,3 +67,23 @@ Re-add correctly:
 
 Source: claude-api skill (Files API beta `files-api-2025-04-14`; beta messages on
 `client.beta.messages.*`).
+
+---
+
+## Generated podcast theme + richer SFX via ElevenLabs (deferred from F4)
+
+F4 ships placeholder/curated music assets (committed `assets/audio/*.wav`:
+intro/outro/sting/bed) resolved by cue, with a graceful missing-asset skip in the
+mixer. The two follow-ups:
+
+- **Generated theme music** via ElevenLabs (the music/sound-generation API) to
+  replace the placeholder stings -- a generation path behind the audio/tts ports
+  so the theme and the rare SFX cue can be synthesised, cached, and reused.
+- **Richer SFX beds** -- the 3-layer mixer already supports `under` beds and
+  non-`under` stings; populate a small curated/generated SFX library and let the
+  narration prompt emit sparse `sfx` cues.
+
+The schema (`Turn.type == "sfx"`, `cue`, `under`) and the mixer layers already
+exist, so this is a population + generation-adapter change, not a rewrite.
+
+Source: docs/podcast_design.md section 6 (Music & SFX) + the F4 brief.

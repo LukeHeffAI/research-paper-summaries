@@ -11,11 +11,14 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
+from downlow.adapters.audio.mixer import PydubAudioMixer
 from downlow.adapters.llm.anthropic_client import AnthropicLLMClient
 from downlow.adapters.pdf.extractor import PdfPlumberExtractor
+from downlow.adapters.tts.elevenlabs_client import ElevenLabsTTSClient
 from downlow.config.profiles import DownLowConfig, load_config
 from downlow.config.settings import Settings
 from downlow.core.stages.ingest import IngestStage
+from downlow.core.stages.narrate import NarrateStage
 from downlow.core.stages.summarise import SummariseStage
 
 
@@ -70,6 +73,55 @@ def build_container(
         config=config,
         ingest=IngestStage(extractor, cache_dir=cache_dir),
         summarise=SummariseStage(llm, cache_dir=cache_dir, extractor=extractor),
+    )
+
+
+def build_narrate_stage(
+    settings: Settings | None = None,
+    *,
+    config: DownLowConfig | None = None,
+    research_profile: str | None = None,
+    output_profile: str | None = None,
+) -> NarrateStage:
+    """Wire the NARRATE stage (F4) -- needs both Anthropic and ElevenLabs keys.
+
+    Built separately from :func:`build_container` so the summarise/ingest commands
+    do not require an ElevenLabs key. Uses the *narration* model config (distinct
+    from the summary model) and the repo/``$DATA_DIR`` assets dir.
+
+    Raises:
+        ValueError: if ``ANTHROPIC_API_KEY`` or ``ELEVENLABS_API_KEY`` is unset.
+    """
+    settings = settings or Settings()
+    config = config or load_config(
+        settings.config_file,
+        research_override=research_profile,
+        output_override=output_profile,
+    )
+
+    if not settings.anthropic_api_key:
+        raise ValueError("ANTHROPIC_API_KEY is not set; narration needs an Anthropic API key")
+    if not settings.elevenlabs_api_key:
+        raise ValueError("ELEVENLABS_API_KEY is not set; narration needs an ElevenLabs API key")
+
+    cache_dir = settings.data_dir / "cache"
+    extractor = PdfPlumberExtractor()
+    llm = AnthropicLLMClient(
+        api_key=settings.anthropic_api_key,
+        model=config.narration.model.id,
+        max_retries=settings.max_retries,
+        timeout=settings.request_timeout,
+    )
+    tts = ElevenLabsTTSClient(api_key=settings.elevenlabs_api_key)
+    mixer = PydubAudioMixer(config.narration.mix)
+
+    return NarrateStage(
+        llm,
+        tts,
+        mixer,
+        cache_dir=cache_dir,
+        assets_dir=settings.assets_dir,
+        extractor=extractor,
     )
 
 
