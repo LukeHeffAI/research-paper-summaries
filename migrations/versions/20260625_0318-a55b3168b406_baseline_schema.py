@@ -295,6 +295,17 @@ def upgrade() -> None:
     with op.batch_alter_table("stage_run", schema=None) as batch_op:
         batch_op.create_index(batch_op.f("ix_stage_run_run_id"), ["run_id"], unique=False)
 
+    # The mutual user<->voice FK. It is declared inline on create_table("user") via
+    # ForeignKeyConstraint(..., use_alter=True), which SQLite honours (it defines FKs
+    # inline at table-create time). On Postgres, however, Alembic does NOT emit the
+    # deferred ALTER ... ADD CONSTRAINT for an inline use_alter FK during a migration
+    # -- so the FK would never be created. Create it explicitly here (after both
+    # `user` and `voice` exist) on non-SQLite backends, with the exact name the
+    # downgrade drops. The env.py include_object excludes this name from autogenerate
+    # comparison so it does not show as drift either way.
+    if op.get_bind().dialect.name != "sqlite":
+        op.create_foreign_key("fk_user_host_voice_id", "user", "voice", ["host_voice_id"], ["id"])
+
     # ### end Alembic commands ###
 
 
