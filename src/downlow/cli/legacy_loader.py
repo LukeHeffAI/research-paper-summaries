@@ -157,7 +157,17 @@ def _scan_users_tree(users_dir: Path) -> tuple[list[str], list[LegacyOrphanAudio
             continue
         username = child.name
         usernames.append(username)
-        has_source = any((child / sub).is_dir() and any((child / sub).iterdir()) for sub in _SOURCE_SUBDIRS)
+        # A user has a re-derivable source only if documents/ holds an actual PDF
+        # (legacy documents/ also cached pdf_texts.json, which must NOT count) or
+        # summaries/ holds any file.
+        has_source = False
+        for sub in _SOURCE_SUBDIRS:
+            d = child / sub
+            if not d.is_dir():
+                continue
+            if any(d.glob("*.pdf")) if sub == "documents" else any(d.iterdir()):
+                has_source = True
+                break
         audio_dir = child / _AUDIO_SUBDIR
         if audio_dir.is_dir() and not has_source:
             for mp3 in sorted(audio_dir.glob("*.mp3")):

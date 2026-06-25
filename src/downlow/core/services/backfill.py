@@ -167,7 +167,8 @@ class BackfillService:
         user_ids: dict[str, int] = {}
         for username in _ordered_unique(data.users):
             user, created = self._ensure_user(username)
-            assert user.id is not None  # the store always assigns an id on add/read
+            if user.id is None:  # pragma: no cover - the repository always assigns an id
+                raise RuntimeError("repository did not assign a user id")
             user_ids[username] = user.id
             if created:
                 report.users_imported += 1
@@ -181,7 +182,8 @@ class BackfillService:
                 # A profile for a user not in the union is impossible (the union
                 # includes every research-profile username), but guard defensively.
                 user, _created = self._ensure_user(profile.username)
-                assert user.id is not None
+                if user.id is None:  # pragma: no cover - the repository always assigns an id
+                    raise RuntimeError("repository did not assign a user id")
                 user_id = user.id
                 user_ids[profile.username] = user_id
             if self._import_research_profile(user_id, profile):
