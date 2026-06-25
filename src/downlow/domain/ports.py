@@ -6,9 +6,10 @@ inject fakes. This is the seam that keeps ``core`` provider-agnostic and lets a
 future FastAPI layer call core services unchanged.
 
 Phase 1 (F1) defines ``PdfExtractor``; F2 adds ``LLMClient`` (+ ``LLMDocument``);
-F4 adds ``TTSClient`` and ``AudioMixer`` (+ the ``RenderedTurn`` value object). The
-remaining ports named in the plan (``ReportRenderer``, ``ArtifactStore``,
-``Repository``, ``Clock``) are defined alongside the features that introduce them.
+F3 adds ``ReportRenderer`` and ``ArtifactStore``; F4 adds ``TTSClient`` and
+``AudioMixer`` (+ the ``RenderedTurn`` value object). The remaining ports named in
+the plan (``Repository``, ``Clock``) are defined alongside the features that
+introduce them.
 """
 
 from __future__ import annotations
@@ -18,7 +19,7 @@ from typing import Protocol, TypeVar, runtime_checkable
 
 from pydantic import BaseModel, Field
 
-from downlow.domain.schemas import ExtractedText, Turn
+from downlow.domain.schemas import ExtractedText, ReportData, Turn
 
 
 @runtime_checkable
@@ -134,6 +135,92 @@ class LLMClient(Protocol):
         is model-specific, so the implementation pins its own model — callers
         recompute if the model flips (e.g. Sonnet <-> Opus).
         """
+        ...
+
+
+# --------------------------------------------------------------------------- #
+# ReportRenderer (F3) -- assembled report -> compiled PDF bytes.                #
+# --------------------------------------------------------------------------- #
+
+
+@runtime_checkable
+class ReportRenderer(Protocol):
+    """Compile an assembled :class:`ReportData` into a report PDF, provider-agnostic.
+
+    The default backend is ``adapters.render.typst_renderer.TypstRenderer`` (the
+    only place the ``typst`` binary is shelled out to via ``subprocess``);
+    ``tests.fakes.render.FakeReportRenderer`` is what ``core`` tests use. No Typst
+    types -- not the template path, not a ``subprocess`` handle -- appear in this
+    contract; the renderer owns the deterministic, data-driven template.
+
+    Contract for :meth:`render`:
+
+    * accepts the fully-assembled :class:`ReportData` (document metadata + the
+      ordered list of summaries to render, the legacy merge-into-one-document
+      behaviour);
+    * serialises the data so the template loads it *as data* (arbitrary summary
+      strings are escaped by the renderer, never injected as markup), compiles it,
+      and returns the finished PDF as ``bytes`` -- never a file path or a provider
+      object;
+    * raises :class:`downlow.domain.errors.TypstCompileError` (with the captured
+      compiler ``stderr``) when compilation fails or the binary is missing.
+
+    Identical input yields a byte-stable PDF, so the render is unit-testable and
+    trivially cacheable.
+    """
+
+    def render(self, data: ReportData) -> bytes:
+        """Compile ``data`` into a report PDF (bytes)."""
+        ...
+
+
+# --------------------------------------------------------------------------- #
+# ArtifactStore -- durable binary artifacts behind a logical reference.         #
+# --------------------------------------------------------------------------- #
+
+
+@runtime_checkable
+class ArtifactStore(Protocol):
+    """Persist binary artifacts (report PDFs, episode mp3s) behind a logical key.
+
+    The default backend is ``adapters.storage.filesystem_store.FilesystemArtifactStore``
+    (the only place this layer touches the filesystem layout under ``DATA_DIR``).
+    Binaries flow through this port and the returned *reference* (not a raw
+    filesystem path baked into core) is what the DB records, so a later move to
+    object storage for multi-user is an adapter swap -- nothing in ``core`` changes.
+
+    Contract for :meth:`put`:
+
+    * accepts a logical ``key`` (e.g. ``"reports/<slug>.pdf"``) and the artifact
+      ``data`` bytes, writes them durably (atomically), and returns the stored
+      reference (a string the store can later resolve back to the bytes).
+
+    Contract for :meth:`exists`:
+
+    * returns whether an artifact is already stored under ``key``, so a stage can
+      skip a redundant re-write on a cache hit (RENDER) without re-serialising.
+
+    Contract for :meth:`ref_for`:
+
+    * returns the logical reference a ``put`` under ``key`` would yield, WITHOUT
+      writing -- so a stage that skipped the write (the artifact already
+      :meth:`exists`) can still report the reference. The reference is deterministic
+      in ``key``.
+
+    The write is idempotent: re-putting the same key overwrites in place, so a
+    re-run of a stage does not duplicate or corrupt the artifact.
+    """
+
+    def put(self, key: str, data: bytes) -> str:
+        """Store ``data`` under ``key`` and return its logical reference."""
+        ...
+
+    def exists(self, key: str) -> bool:
+        """True when an artifact is already stored under ``key``."""
+        ...
+
+    def ref_for(self, key: str) -> str:
+        """The logical reference for ``key`` without writing (deterministic in key)."""
         ...
 
 
