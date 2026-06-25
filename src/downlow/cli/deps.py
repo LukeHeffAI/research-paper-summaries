@@ -9,6 +9,7 @@ keeping ``core`` pure and provider-agnostic.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 
 from downlow.adapters.audio.mixer import PydubAudioMixer
@@ -19,6 +20,7 @@ from downlow.adapters.storage.filesystem_store import FilesystemArtifactStore
 from downlow.adapters.tts.elevenlabs_client import ElevenLabsTTSClient
 from downlow.config.profiles import DownLowConfig, load_config
 from downlow.config.settings import Settings
+from downlow.core.services.filename import FilenameHeuristic
 from downlow.core.stages.ingest import IngestStage
 from downlow.core.stages.narrate import NarrateStage
 from downlow.core.stages.render import RenderStage
@@ -134,6 +136,40 @@ def build_narrate_stage(
         cache_dir=cache_dir,
         assets_dir=settings.assets_dir,
         extractor=extractor,
+    )
+
+
+def build_filename_heuristic(
+    settings: Settings | None = None,
+    *,
+    config: DownLowConfig | None = None,
+) -> FilenameHeuristic:
+    """Wire the F5 filename heuristic -- needs only the Anthropic key.
+
+    Built separately from :func:`build_container` so ``dl name`` does not require an
+    ElevenLabs key (or the typst binary). Uses the *metadata* model config (a tiny,
+    cheap call distinct from the summary model) and injects today's UTC year as the
+    year-plausibility bound, keeping ``core`` free of any clock dependency.
+
+    Raises:
+        ValueError: if ``ANTHROPIC_API_KEY`` is unset.
+    """
+    settings = settings or Settings()
+    config = config or load_config(settings.config_file)
+
+    if not settings.anthropic_api_key:
+        raise ValueError("ANTHROPIC_API_KEY is not set; metadata extraction needs an Anthropic API key")
+
+    llm = AnthropicLLMClient(
+        api_key=settings.anthropic_api_key,
+        model=config.metadata.model.id,
+        max_retries=settings.max_retries,
+        timeout=settings.request_timeout,
+    )
+    return FilenameHeuristic(
+        llm,
+        extractor=PdfPlumberExtractor(),
+        current_year=datetime.now(UTC).year,
     )
 
 

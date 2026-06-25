@@ -67,6 +67,27 @@ class ReportConfig(BaseModel):
 
 
 # --------------------------------------------------------------------------- #
+# F5 config -- the paper-filename metadata extractor's model + prompt knobs.    #
+# `core` receives the typed values; it never reads the config file.            #
+# --------------------------------------------------------------------------- #
+
+
+class MetadataConfig(BaseModel):
+    """The F5 metadata-extractor's resolved model + prompt configuration.
+
+    Metadata extraction is a tiny, cheap structured-output call (title / authors /
+    year), so the defaults are a small ``max_tokens`` and ``effort = "low"``. The
+    ``prompt_version`` is the metadata cache-key input (matches
+    :data:`downlow.core.prompts.metadata.METADATA_PROMPT_VERSION`).
+    """
+
+    model: ModelConfig = Field(
+        default_factory=lambda: ModelConfig(id="claude-sonnet-4-6", max_tokens=512, effort="low")
+    )
+    prompt_version: str = "metadata-v1"
+
+
+# --------------------------------------------------------------------------- #
 # NARRATE config (F4) -- podcast / voices / tone-presets / mix / music.        #
 # These are the owner-tunable knobs from docs/podcast_design.md section 7.     #
 # `core` receives the typed values; it never reads the config file.            #
@@ -129,6 +150,7 @@ class DownLowConfig(BaseModel):
     summary: SummaryConfig
     report: ReportConfig
     narration: NarrationConfig
+    metadata: MetadataConfig = Field(default_factory=MetadataConfig)
 
     # All defined profiles, kept so the CLI can select a non-default one by name.
     research_profiles: dict[str, ResearchProfile] = Field(default_factory=dict)
@@ -182,6 +204,7 @@ def load_config(
 
     report = _load_report(raw)
     narration = _load_narration(raw)
+    metadata = _load_metadata(raw)
 
     return DownLowConfig(
         research_profile=research,
@@ -189,6 +212,7 @@ def load_config(
         summary=summary,
         report=report,
         narration=narration,
+        metadata=metadata,
         research_profiles=research_profiles,
         output_profiles=output_profiles,
     )
@@ -226,6 +250,24 @@ def _as_title_mode(value: object) -> TitleMode:
     if value == "templated" or value == "llm":
         return value
     raise ConfigError(f"[report].title_mode must be 'templated' or 'llm', got {value!r}")
+
+
+def _load_metadata(raw: dict[str, object]) -> MetadataConfig:
+    """Parse the [metadata] section into a typed :class:`MetadataConfig` (F5).
+
+    Tolerant of an absent section: every field has a default, so a config file
+    without a ``[metadata]`` table still yields a usable :class:`MetadataConfig`
+    (the cheap default model + the shipped prompt version).
+    """
+    metadata = _section(raw, "metadata")
+    return MetadataConfig(
+        model=ModelConfig(
+            id=_as_str(metadata.get("model"), "claude-sonnet-4-6"),
+            max_tokens=_as_int(metadata, "max_tokens", 512),
+            effort=_as_str(metadata.get("effort"), "low"),
+        ),
+        prompt_version=_as_str(metadata.get("prompt_version"), "metadata-v1"),
+    )
 
 
 def _load_narration(raw: dict[str, object]) -> NarrationConfig:

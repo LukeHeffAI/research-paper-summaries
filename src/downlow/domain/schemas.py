@@ -165,6 +165,46 @@ class PaperSummary(BaseModel):
 
 
 # --------------------------------------------------------------------------- #
+# F5 -- paper bibliographic metadata, for the filename heuristic.              #
+#                                                                              #
+# A small Claude structured-output target: the model extracts the paper's      #
+# title / authors / year faithfully (empty when absent -- never fabricated),   #
+# and a pure deterministic builder turns it into a path-safe filename. Like    #
+# PaperSummary, the model-populated fields carry NO numeric/length constraints  #
+# (no `min_length` / `ge` on `authors` / `year`) so the generated JSON schema   #
+# stays inside Claude's accepted subset.                                       #
+# --------------------------------------------------------------------------- #
+
+
+class PaperMetadata(BaseModel):
+    """The faithful bibliographic metadata of a paper (F5).
+
+    Model-populated from the paper's front matter only -- never inferred from the
+    model's own knowledge of a recognised paper, and never fabricated. ``authors``
+    is empty and ``year`` is ``None`` when the value is genuinely absent from the
+    source; that is a valid, expected output (a wrong guess is worse than empty).
+
+    ``authors`` preserves the printed order, so ``authors[0]`` is the first author
+    (load-bearing: the filename builder takes the first author's surname). Each
+    author is a full display name string ("Jane Q. Smith"); surname extraction is
+    the deterministic job of :func:`downlow.core.naming.build_paper_filename`, not
+    the model's, so non-Western / multi-part names stay consistent. ``title`` is the
+    verbatim title (subtitle included); the filename builder, not this DTO, does any
+    truncation -- the stored title stays complete for the reader / search.
+    """
+
+    title: str = Field(default="", description="The paper's verbatim title (subtitle included); '' if none found.")
+    authors: list[str] = Field(
+        default_factory=list,
+        description="Full author display names in printed order (authors[0] = first author); [] if none found.",
+    )
+    year: int | None = Field(
+        default=None,
+        description="The publication year, faithfully from the front matter; None if not found in the document.",
+    )
+
+
+# --------------------------------------------------------------------------- #
 # RENDER input (F3) -- the assembled report a ReportRenderer compiles to PDF.  #
 #                                                                              #
 # A small, pure DTO: the RENDER stage assembles one or more PaperSummary       #
