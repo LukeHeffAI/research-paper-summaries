@@ -10,6 +10,7 @@ from __future__ import annotations
 import typer
 
 from downlow import __version__
+from downlow.cli.commands.backfill import backfill
 from downlow.cli.commands.library import library_app
 from downlow.cli.commands.narrate import narrate
 from downlow.cli.commands.process import process
@@ -41,4 +42,5 @@ app.command()(report)
 app.command()(narrate)
 app.command()(rename)
 app.command()(process)
+app.command()(backfill)
 app.add_typer(library_app, name="library")

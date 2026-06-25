@@ -165,3 +165,15 @@ known non-blocking gap remains the `json`-vs-`jsonb` entry above (acceptable: th
 columns are read/written whole, never queried by content). Driver: `psycopg[binary]`
 under the `postgres` extra; the same `create_db_engine` serves both backends. Proof
 is the CI `test-postgres` job (no local Postgres).
+
+## research_profile / output_profile lack a DB uniqueness backstop (Phase 2.3)
+
+The backfill (and the data-model docstrings) treat `research_profile.user_id` as
+unique-per-user and `output_profile.(user_id, name)` as unique, but
+`adapters/db/tables.py` declares no `UniqueConstraint` for them (unlike
+`user.username` / `episode_paper`). Dedupe is enforced only by the service's
+find-then-`add`. Safe for the single-process CLI, but two concurrent backfills (or a
+future API racing the CLI) could double-insert. **Fix when concurrency / the API
+lands:** add `UniqueConstraint("user_id")` to `research_profile` and
+`UniqueConstraint("user_id", "name")` to `output_profile`, plus an Alembic migration,
+and verify the drift gate on both backends.
