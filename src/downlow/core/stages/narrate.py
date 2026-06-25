@@ -144,6 +144,17 @@ class NarrateStage:
             NarrationQualityError: if the generated script is degenerate.
         """
         script = self.generate_script(pdf_path, cfg, summary=summary, force=force)
+        return self.render_episode(script, cfg, force=force)
+
+    def render_episode(self, script: NarrationScript, cfg: NarrationConfig, *, force: bool = False) -> bytes:
+        """Synthesise + mix an ALREADY-GENERATED ``script`` into the episode mp3.
+
+        Split out of :meth:`run` so a caller that already holds the
+        :class:`NarrationScript` (the orchestrator, which generates it once for its
+        provenance) renders the audio WITHOUT regenerating the script -- avoiding a
+        second LLM call (and the double work even when the script cache would absorb
+        it). :meth:`run` is the one-shot convenience that generates then renders.
+        """
         rendered = self._render_turns(script, cfg, force=force)
         return self._mixer.mix(rendered)
 
