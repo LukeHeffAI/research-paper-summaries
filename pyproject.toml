@@ -114,8 +114,8 @@ omit = [
 ]
 
 [tool.coverage.report]
-# Ratchet 60 -> 70 -> 75 -> 80 as F2-F5 land. F2/F4 hold the suite at ~82%.
-fail_under = 75
+# Ratchet 60 -> 70 -> 75 -> 78 -> 80 as F2-F5 land. F2/F3/F4 hold the suite at ~84%.
+fail_under = 78
 show_missing = true
 exclude_lines = [
     "pragma: no cover",

@@ -165,6 +165,61 @@ class PaperSummary(BaseModel):
 
 
 # --------------------------------------------------------------------------- #
+# RENDER input (F3) -- the assembled report a ReportRenderer compiles to PDF.  #
+#                                                                              #
+# A small, pure DTO: the RENDER stage assembles one or more PaperSummary       #
+# objects (the legacy "merge all summaries into one document" behaviour) plus  #
+# a document title and the template version, and hands it to the              #
+# ReportRenderer port. The adapter serialises THIS to the JSON the Typst       #
+# template loads as data -- so neither core nor domain ever names Typst.       #
+# --------------------------------------------------------------------------- #
+
+
+class ReportMeta(BaseModel):
+    """Document-level metadata for the assembled report (RENDER, F3).
+
+    Kept separate from the per-paper :class:`PaperSummary` content because it
+    describes the *document* (its title and which template version produced it),
+    not any one paper. ``template_version`` is stamped so a re-render after a
+    template change is a deliberate, traceable ablation (and a cache-key input).
+    """
+
+    title: str = Field(description="The report's document title (a templated default or an LLM override).")
+    template_version: str = Field(description="The version of the Typst template that rendered this report.")
+
+
+class ReportTitleSuggestion(BaseModel):
+    """The model's proposed title/slug for the report (RENDER, F3, LLM title path).
+
+    A Claude structured-output target used only when
+    ``ReportConfig.title_mode == "llm"``. Model-populated, so it carries NO
+    numeric/length constraints (the JSON-schema-subset rule above). The ``slug`` is
+    *advisory*: the RENDER stage always re-slugifies deterministically, so the
+    model never picks the on-disk filename directly (path-safety).
+    """
+
+    title: str = Field(description="A concise, human-readable document title for the compiled report.")
+    slug: str = Field(description="An advisory lowercase hyphen-separated slug; the stage re-derives the real one.")
+
+
+class ReportData(BaseModel):
+    """The fully-assembled report the :class:`~downlow.domain.ports.ReportRenderer` compiles.
+
+    Pairs the document :class:`ReportMeta` with the ordered list of
+    :class:`PaperSummary` objects to render -- one section per paper, in order.
+    The renderer serialises this to the data file the Typst template loads (so
+    arbitrary summary strings are escaped by Typst's ``json()``, never injected as
+    markup). Pure pydantic; no Typst types appear here.
+    """
+
+    meta: ReportMeta = Field(description="Document-level metadata (title, template version).")
+    summaries: list[PaperSummary] = Field(
+        default_factory=list,
+        description="The papers to render, in document order (1..N; the legacy merge-into-one-doc behaviour).",
+    )
+
+
+# --------------------------------------------------------------------------- #
 # NARRATE output (F4) -- the two-presenter interview script (turns).          #
 #                                                                              #
 # A direct generalisation of VTTD's ScriptSegment model, retargeted to a       #

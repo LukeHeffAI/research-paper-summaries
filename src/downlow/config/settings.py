@@ -37,6 +37,11 @@ class Settings(BaseSettings):
     # never sees the path -- it receives the parsed, typed config.
     config_file: Path = Path("./config/downlow.toml")
 
+    # --- Report rendering (F3) ---
+    # The ``typst`` executable used by the RENDER adapter. A bare name is resolved
+    # on PATH; an absolute path is used directly. Pin the binary version in CI.
+    typst_binary: str = "typst"
+
     # --- Models (per-stage ModelConfig refinement arrives in Phase 1) ---
     summary_model: str = "claude-sonnet-4-6"
     narration_model: str = "claude-sonnet-4-6"

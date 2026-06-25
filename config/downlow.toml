@@ -26,6 +26,29 @@ effort = "low"
 prompt_version = "summary-v1"
 
 
+# --- RENDER (F3): the compiled summary report PDF (Typst) --------------------- #
+# Deterministic, data-driven Typst template (NOT LLM-emitted markup). `core`
+# receives typed values only; the typst binary itself is `typst_binary` in the
+# environment/Settings, never here.
+
+[report]
+# Bump when typst/report.typ changes; part of the optional render cache key and
+# stamped into the report's ReportMeta (a traceable template ablation).
+template_version = "report-v1"
+# How the document title/filename is chosen:
+#   "templated" -- a deterministic default derived from the paper title(s) (no API
+#                  call); the safe, free default.
+#   "llm"       -- a tiny LLM call proposes a {title, slug}; the slug is STILL
+#                  re-slugified deterministically (the model never picks the
+#                  on-disk filename directly -- path-safety).
+title_mode = "templated"
+# The model used only when title_mode = "llm" (a small, cheap call).
+model = "claude-sonnet-4-6"
+max_tokens = 200
+effort = "low"
+prompt_version = "report-title-v1"
+
+
 # --- NARRATE (F4): the two-presenter interview podcast ----------------------- #
 # All the owner-tunable podcast knobs (docs/podcast_design.md section 7). Later
 # these graduate to a DB-backed Setting registry seeded from here; for now the

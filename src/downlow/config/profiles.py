@@ -40,6 +40,31 @@ class SummaryConfig(BaseModel):
 
 
 # --------------------------------------------------------------------------- #
+# RENDER config (F3) -- the Typst report's title/template knobs.               #
+# `core` receives the typed values; it never reads the config file.            #
+# --------------------------------------------------------------------------- #
+
+
+class ReportConfig(BaseModel):
+    """The RENDER stage's resolved template + title configuration.
+
+    ``template_version`` is stamped into the report's :class:`ReportMeta` and is an
+    optional render-cache-key input. ``title_mode`` selects how the document title
+    is chosen: ``templated`` (a deterministic default from the paper title(s), no
+    API call) or ``llm`` (a tiny LLM call proposes a title; the on-disk slug is
+    still derived deterministically -- the model never picks the filename). The
+    :class:`ModelConfig` is used only on the ``llm`` path.
+    """
+
+    template_version: str = "report-v1"
+    title_mode: str = "templated"
+    model: ModelConfig = Field(
+        default_factory=lambda: ModelConfig(id="claude-sonnet-4-6", max_tokens=200, effort="low")
+    )
+    prompt_version: str = "report-title-v1"
+
+
+# --------------------------------------------------------------------------- #
 # NARRATE config (F4) -- podcast / voices / tone-presets / mix / music.        #
 # These are the owner-tunable knobs from docs/podcast_design.md section 7.     #
 # `core` receives the typed values; it never reads the config file.            #
@@ -100,6 +125,7 @@ class DownLowConfig(BaseModel):
     research_profile: ResearchProfile
     output_profile: OutputProfile
     summary: SummaryConfig
+    report: ReportConfig
     narration: NarrationConfig
 
     # All defined profiles, kept so the CLI can select a non-default one by name.
@@ -152,15 +178,37 @@ def load_config(
         prompt_version=summary_section.get("prompt_version", "summary-v1"),
     )
 
+    report = _load_report(raw)
     narration = _load_narration(raw)
 
     return DownLowConfig(
         research_profile=research,
         output_profile=output,
         summary=summary,
+        report=report,
         narration=narration,
         research_profiles=research_profiles,
         output_profiles=output_profiles,
+    )
+
+
+def _load_report(raw: dict[str, object]) -> ReportConfig:
+    """Parse the [report] section into a typed :class:`ReportConfig`.
+
+    Tolerant of an absent section: every field has a default, so a config file
+    without a ``[report]`` table still yields a usable :class:`ReportConfig` (the
+    safe ``templated`` title mode, the shipped template version).
+    """
+    report = _section(raw, "report")
+    return ReportConfig(
+        template_version=_as_str(report.get("template_version"), "report-v1"),
+        title_mode=_as_str(report.get("title_mode"), "templated"),
+        model=ModelConfig(
+            id=_as_str(report.get("model"), "claude-sonnet-4-6"),
+            max_tokens=_as_int(report, "max_tokens", 200),
+            effort=_as_str(report.get("effort"), "low"),
+        ),
+        prompt_version=_as_str(report.get("prompt_version"), "report-title-v1"),
     )
 
 

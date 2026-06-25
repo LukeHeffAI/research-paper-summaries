@@ -62,6 +62,24 @@ class TruncatedResponseError(LLMError):
         super().__init__(message, request_id=request_id, stop_reason="max_tokens")
 
 
+class TypstCompileError(DownLowError):
+    """Raised by RENDER when the ``typst`` binary exits non-zero (F3).
+
+    The :class:`~downlow.domain.ports.ReportRenderer` port maps a Typst compile
+    failure -- a malformed template, a binary that cannot parse the data file, a
+    missing binary -- onto this provider-agnostic error so ``core`` can ``except``
+    it without importing ``subprocess`` or knowing the binary is ``typst``. The
+    adapter (the only layer that shells out) captures the compiler's ``stderr`` and
+    surfaces it here so a maintainer sees the real cause, replacing the legacy
+    "rename the file and hope" non-error-handling.
+    """
+
+    def __init__(self, message: str, *, returncode: int | None = None, stderr: str | None = None) -> None:
+        self.returncode = returncode
+        self.stderr = stderr
+        super().__init__(message)
+
+
 class TTSError(DownLowError):
     """Raised when a text-to-speech synthesis call fails in a modelled way.
 

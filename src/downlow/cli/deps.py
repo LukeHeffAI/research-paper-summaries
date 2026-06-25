@@ -14,11 +14,14 @@ from pathlib import Path
 from downlow.adapters.audio.mixer import PydubAudioMixer
 from downlow.adapters.llm.anthropic_client import AnthropicLLMClient
 from downlow.adapters.pdf.extractor import PdfPlumberExtractor
+from downlow.adapters.render.typst_renderer import TypstRenderer
+from downlow.adapters.storage.filesystem_store import FilesystemArtifactStore
 from downlow.adapters.tts.elevenlabs_client import ElevenLabsTTSClient
 from downlow.config.profiles import DownLowConfig, load_config
 from downlow.config.settings import Settings
 from downlow.core.stages.ingest import IngestStage
 from downlow.core.stages.narrate import NarrateStage
+from downlow.core.stages.render import RenderStage
 from downlow.core.stages.summarise import SummariseStage
 
 
@@ -30,6 +33,7 @@ class Container:
     config: DownLowConfig
     ingest: IngestStage
     summarise: SummariseStage
+    render: RenderStage
 
 
 def build_container(
@@ -68,11 +72,19 @@ def build_container(
         timeout=settings.request_timeout,
     )
 
+    # RENDER (F3): the typst renderer + the filesystem artifact store. The LLM is
+    # passed only so the optional ``title_mode = "llm"`` override path works; the
+    # default ``templated`` mode never calls it.
+    renderer = TypstRenderer(binary=settings.typst_binary)
+    store = FilesystemArtifactStore(settings.data_dir)
+    render = RenderStage(renderer, store, llm=llm, cache_dir=cache_dir)
+
     return Container(
         settings=settings,
         config=config,
         ingest=IngestStage(extractor, cache_dir=cache_dir),
         summarise=SummariseStage(llm, cache_dir=cache_dir, extractor=extractor),
+        render=render,
     )
 
 
