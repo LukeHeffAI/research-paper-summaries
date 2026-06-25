@@ -24,14 +24,13 @@ Marked ``integration`` (real DB), though it needs no external service/binary.
 
 from __future__ import annotations
 
-from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
 from sqlalchemy.engine import Engine
 from sqlmodel import Session
 
-from downlow.adapters.db.engine import SystemClock, create_all, create_db_engine
+from downlow.adapters.db.engine import SystemClock
 from downlow.adapters.db.repositories import SqlModelRepository
 from downlow.config.models import ModelConfig
 from downlow.config.profiles import (
@@ -121,14 +120,15 @@ def _narration_script() -> NarrationScript:
 
 
 @pytest.fixture
-def engine(tmp_path: Path) -> Iterator[Engine]:
-    """A real temp-file SQLite engine (FK pragma on) with the schema created."""
-    eng = create_db_engine(f"sqlite:///{(tmp_path / 'proc.db').as_posix()}")
-    create_all(eng)
-    try:
-        yield eng
-    finally:
-        eng.dispose()
+def engine(db_engine: Engine) -> Engine:
+    """A real engine with the schema created -- SQLite locally, Postgres in CI.
+
+    Backend-agnostic (Phase 2.2): delegates to the shared ``db_engine`` fixture,
+    which honours ``DATABASE_URL`` (temp-file SQLite by default, Postgres when set,
+    with a clean schema per test). The same ProcessingService idempotency / FK /
+    resume-from-failure assertions therefore run unchanged on both backends.
+    """
+    return db_engine
 
 
 @pytest.fixture

@@ -13,6 +13,12 @@ nothing here is a SQLite-only assumption that would break on Postgres:
   keys unless asked, so the FKs the schema declares are actually checked (Postgres
   enforces them natively, so the pragma is scoped to SQLite).
 
+Postgres needs no special-casing here: a ``postgresql+psycopg://...`` URL (psycopg3,
+the ``postgres`` optional-dependency extra) is created with default ``connect_args``
+and the stdlib connection pool, so the same ``create_db_engine`` call serves both
+backends after a ``DATABASE_URL`` flip. ``psycopg`` enforces FKs and stores tz-aware
+timestamps natively, so neither SQLite tweak applies.
+
 Importing this module pulls in :mod:`downlow.adapters.db.tables`, registering every
 ``table=True`` row on ``SQLModel.metadata`` before any ``create_all`` /
 autogenerate reads it.
