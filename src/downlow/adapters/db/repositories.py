@@ -95,6 +95,46 @@ class SqlModelRepository(Generic[EntityT]):
             updates[_UPDATED_FIELD] = now
         return entity.model_copy(update=updates)
 
+    def update(self, entity: EntityT) -> EntityT:
+        """UPDATE the existing row identified by ``entity.id`` in place; return it.
+
+        The mirror of insert-only :meth:`add`: this never inserts. It loads the row
+        by ``entity.id``, overwrites its columns from ``entity`` (preserving the
+        original ``created_at`` -- the entity's create timestamp wins, not the wall
+        clock), re-stamps ``updated_at`` from the injected clock, commits, and returns
+        the refreshed entity. Used wherever a service modifies a persisted row in
+        place (a run's terminal status, a paper's backfilled title) rather than the
+        insert-then-duplicate that :meth:`add` would cause.
+
+        The caller owns the session (commits here, no rollback -- see ``add``).
+
+        Raises:
+            ValueError: if ``entity.id`` is ``None`` (nothing to update).
+            KeyError: if no row with ``entity.id`` exists (update never inserts).
+        """
+        entity_id = getattr(entity, "id", None)
+        if entity_id is None:
+            raise ValueError(f"cannot update a {self._entity_type.__name__} with no id (use add to insert)")
+        row = self._session.get(self._row_type, entity_id)
+        if row is None:
+            raise KeyError(f"no {self._entity_type.__name__} with id {entity_id} to update")
+
+        now = self._clock.now()
+        fields = set(self._entity_type.model_fields)
+        updates: dict[str, Any] = {}
+        if _UPDATED_FIELD in fields:
+            updates[_UPDATED_FIELD] = now
+        prepared = entity.model_copy(update=updates) if updates else entity
+
+        # Overwrite the existing row's columns from the entity (id preserved), so the
+        # update mutates the loaded row rather than inserting a second one.
+        for field, value in prepared.model_dump().items():
+            setattr(row, field, value)
+        self._session.add(row)
+        self._session.commit()
+        self._session.refresh(row)
+        return self._to_entity(row)
+
     def get(self, entity_id: int) -> EntityT | None:
         """Return the entity with this primary key, or ``None`` if absent."""
         row = self._session.get(self._row_type, entity_id)

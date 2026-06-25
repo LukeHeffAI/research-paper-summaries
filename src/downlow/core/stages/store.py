@@ -47,6 +47,19 @@ from downlow.domain.ports import Repository
 from downlow.domain.schemas import NarrationScript, PaperSummary
 
 
+def require_id(entity: object, name: str) -> int:
+    """Return the persisted entity's id, or raise if the store did not assign one.
+
+    A real raise (not an ``assert``, which ``python -O`` strips) for the post-insert
+    invariant that a repository ``add`` populates the id. A ``None`` here is a broken
+    repository contract, not a recoverable condition.
+    """
+    entity_id = getattr(entity, "id", None)
+    if entity_id is None:
+        raise RuntimeError(f"{name} was persisted without an id (repository.add contract broken)")
+    return int(entity_id)
+
+
 @dataclass
 class StoredArtifacts:
     """The DB rows STORE persisted in a run (each ``None`` for a stage not run).
@@ -173,7 +186,8 @@ class StoreStage:
             changes["doi"] = doi
         if not changes:
             return paper
-        return self._papers.add(paper.model_copy(update={**changes, "id": paper.id}))
+        # UPDATE in place (not add) -- add is insert-only and would duplicate the row.
+        return self._papers.update(paper.model_copy(update={**changes, "id": paper.id}))
 
     def _paper_by_hash(self, source_hash: str) -> Paper | None:
         matches = self._papers.list(source_hash=source_hash)
@@ -285,17 +299,17 @@ class StoreStage:
             episode = self._episodes.add(
                 Episode(user_id=user_id, title=script.episode_title, status=RunStatus.SUCCEEDED)
             )
-            assert episode.id is not None  # the store assigns the id on add
-            self._episode_papers.add(EpisodePaper(episode_id=episode.id, paper_id=paper_id, order=0))
+            episode_id = require_id(episode, "Episode")  # the store assigns the id on add
+            self._episode_papers.add(EpisodePaper(episode_id=episode_id, paper_id=paper_id, order=0))
 
-        assert episode.id is not None
-        existing = self._podcast_by_ref(episode.id, mp3_ref)
+        episode_id = require_id(episode, "Episode")
+        existing = self._podcast_by_ref(episode_id, mp3_ref)
         if existing is not None:
             return episode, existing
 
         podcast = self._podcasts.add(
             PodcastAsset(
-                episode_id=episode.id,
+                episode_id=episode_id,
                 mp3_ref=mp3_ref,
                 narration_script=script.model_dump(),
                 host_voice_id=host_voice_id,

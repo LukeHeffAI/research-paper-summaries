@@ -51,6 +51,7 @@ from downlow.domain.entities import (
     Summary,
 )
 from downlow.domain.enums import RunStatus, SpeakerRole, StageStatus
+from downlow.domain.errors import TTSError
 from downlow.domain.schemas import (
     NarrationScript,
     OutputProfile,
@@ -128,7 +129,14 @@ def pdf(tmp_path: Path) -> Path:
 class _Harness:
     """Holds the wired service + the fakes/repos so a test can drive + assert."""
 
-    def __init__(self, tmp_path: Path, *, render_fails: bool = False, with_narration: bool = True) -> None:
+    def __init__(
+        self,
+        tmp_path: Path,
+        *,
+        render_fails: bool = False,
+        with_narration: bool = True,
+        tts_fails: bool = False,
+    ) -> None:
         cache_dir = tmp_path / "cache"
         self.clock = FrozenClock()
         self.shared = InMemoryStore()
@@ -137,7 +145,7 @@ class _Harness:
         self.extractor = FakePdfExtractor()
         self.renderer = FakeReportRenderer(fail=render_fails)
         self.artifacts = FakeArtifactStore()
-        self.tts = FakeTTSClient()
+        self.tts = FakeTTSClient(fail_with=TTSError("forced TTS failure") if tts_fails else None)
         self.mixer = FakeAudioMixer()
 
         narrate_llm = FakeLLMClient(result=_narration_script())
@@ -296,3 +304,64 @@ def test_rerun_resumes_after_a_render_failure_without_recalling_the_llm(pdf: Pat
     assert h.llm.call_count == llm_calls_after_failure
     # Still exactly one summary row (the resume reused it, did not duplicate).
     assert len(FakeRepository(Summary, h.shared).list()) == 1
+
+
+# --------------------------------------------------------------------------- #
+# Failure-path: NARRATE failure (S2)                                            #
+# --------------------------------------------------------------------------- #
+
+
+def test_narrate_tts_failure_marks_run_failed_after_render_succeeded(pdf: Path, tmp_path: Path) -> None:
+    """A TTS failure in NARRATE fails the run, but RENDER (already done) stands.
+
+    NARRATE is independent of RENDER: when synthesis fails, the run is FAILED and the
+    terminal STORE never runs, yet INGEST/SUMMARISE/RENDER are SUCCEEDED and their
+    outputs (incl. the report asset) are already persisted -- graceful degradation,
+    and a resume re-attempts only NARRATE.
+    """
+    h = _Harness(tmp_path, tts_fails=True)
+    result = h.service.process_paper(pdf, _config(), user_id=1)
+
+    assert result.run.status is RunStatus.FAILED
+    assert result.run.error
+    assert result.run.id is not None
+    statuses = h.stages_of(result.run.id)
+    assert statuses[INGEST] is StageStatus.SUCCEEDED
+    assert statuses[SUMMARISE] is StageStatus.SUCCEEDED
+    assert statuses[RENDER] is StageStatus.SUCCEEDED
+    assert statuses[NARRATE] is StageStatus.FAILED
+    assert STORE not in statuses  # terminal finalizer never ran
+    # The report (RENDER) was persisted before NARRATE failed; no podcast asset.
+    assert len(FakeRepository(ReportAsset, h.shared).list()) == 1
+    assert FakeRepository(PodcastAsset, h.shared).list() == []
+
+
+def test_rerun_resumes_after_a_narrate_failure(pdf: Path, tmp_path: Path) -> None:
+    """After a NARRATE (TTS) failure, the retry replays SUMMARISE+RENDER and finishes.
+
+    The retry must NOT re-call the summary LLM (SUMMARISE replays from the DB) nor
+    recompile a fresh report (RENDER replays from the persisted asset); only NARRATE
+    re-runs, now succeeding, so the run completes SUCCEEDED with one of each artifact.
+    """
+    h = _Harness(tmp_path, tts_fails=True)
+    failed = h.service.process_paper(pdf, _config(), user_id=1)
+    assert failed.run.status is RunStatus.FAILED
+    llm_calls_after_failure = h.llm.call_count
+
+    # Clear the TTS failure and re-run on the same shared store + caches.
+    h.tts.fail_with = None
+    retry = h.service.process_paper(pdf, _config(), user_id=1)
+
+    assert retry.run.status is RunStatus.SUCCEEDED
+    assert retry.run.id is not None
+    statuses = h.stages_of(retry.run.id)
+    assert statuses[SUMMARISE] is StageStatus.SKIPPED
+    assert statuses[RENDER] is StageStatus.SKIPPED  # replayed from the persisted asset
+    assert statuses[NARRATE] is StageStatus.SUCCEEDED
+    assert statuses[STORE] is StageStatus.SUCCEEDED
+    # No new summary LLM call on the resume.
+    assert h.llm.call_count == llm_calls_after_failure
+    # Exactly one of each artifact (no duplication across the two runs).
+    assert len(FakeRepository(Summary, h.shared).list()) == 1
+    assert len(FakeRepository(ReportAsset, h.shared).list()) == 1
+    assert len(FakeRepository(PodcastAsset, h.shared).list()) == 1

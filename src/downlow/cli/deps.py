@@ -44,6 +44,7 @@ from downlow.domain.entities import (
     ReportAsset,
     StageRun,
     Summary,
+    User,
     Voice,
 )
 from downlow.domain.enums import SpeakerRole
@@ -303,6 +304,9 @@ def processing_session(
                 summaries=SqlModelRepository(session, Summary, clock=clock),
                 clock=clock,
             )
+            # Seed the owning user FIRST: paper.user_id -> user.id is an enforced FK
+            # (SQLite has the pragma on), so the first paper write fails without it.
+            _ensure_default_user(SqlModelRepository(session, User, clock=clock))
             voices = VoicesService(SqlModelRepository(session, Voice, clock=clock))
             voices.seed_stock_voices(_stock_voice_specs(config))
             library = LibraryService(SqlModelRepository(session, Paper, clock=clock))
@@ -333,6 +337,20 @@ def library_session(settings: Settings | None = None) -> Iterator[LibraryService
             yield LibraryService(SqlModelRepository(session, Paper, clock=SystemClock()))
     finally:
         engine.dispose()
+
+
+def _ensure_default_user(users: SqlModelRepository[User]) -> User:
+    """Insert the single owning user (id 1) if absent; return it (idempotent).
+
+    ``paper.user_id -> user.id`` is an enforced FK (SQLite has the pragma on), so the
+    first paper write of ``dl process`` fails without an owning user row. Single-user
+    phase: one fixed owner. ``add`` is insert-only, so we guard on existence to keep
+    re-invocations a no-op rather than inserting a second owner.
+    """
+    existing = users.get(_DEFAULT_USER_ID)
+    if existing is not None:
+        return existing
+    return users.add(User(id=_DEFAULT_USER_ID, username="luke", display_name="Luke"))
 
 
 def _stock_voice_specs(config: DownLowConfig) -> list[StockVoiceSpec]:

@@ -4,11 +4,16 @@ Implements the same port the real ``SqlModelRepository`` does, so ``core``
 services + the STORE stage run with no DB, no session, and deterministic ids.
 This is the seam that lets the orchestration tests inject persistence as a fake.
 
-Contract parity with the SQL repo:
+Contract parity with the SQL repo (load-bearing -- a divergence here masks real
+insert-vs-update bugs in ``core``):
 
-* :meth:`add` clears any caller-supplied id, assigns a fresh monotonic id, stamps
-  ``created_at`` / ``updated_at`` from an injected clock when the entity has them
-  and they are unset, and returns the populated *entity* (never a row);
+* :meth:`add` is INSERT-ONLY -- it ALWAYS clears any caller-supplied id and inserts
+  a fresh row (matching ``SqlModelRepository.add`` /
+  ``test_add_ignores_caller_supplied_id``). It never updates in place; a re-save
+  with an id still inserts a new row.
+* :meth:`update` UPDATEs the row identified by ``entity.id`` in place, re-stamping
+  ``updated_at`` -- raising ``ValueError`` if the id is ``None`` and ``KeyError`` if
+  no such row exists (update never inserts).
 * :meth:`get` returns the entity by id or ``None`` (never raises on a miss);
 * :meth:`list` returns entities in id order, narrowed by equality ``filters``
   (rejecting an unknown field, like the SQL repo);
@@ -81,25 +86,44 @@ class FakeRepository(Generic[EntityT]):
         return self._store
 
     def add(self, entity: EntityT) -> EntityT:
-        """Insert ``entity`` with a fresh id + stamped timestamps; return it."""
+        """INSERT ``entity`` with a fresh id + stamped timestamps; return it.
+
+        Insert-only, exactly like ``SqlModelRepository.add``: any caller-supplied id
+        is discarded and a fresh monotonic id allocated, so a re-save NEVER silently
+        updates in place (that is :meth:`update`'s job). This parity is what lets the
+        orchestration tests catch a service that wrongly relied on ``add`` to update.
+        """
         now = self._clock.now()
         fields = set(self._entity_type.model_fields)
         updates: dict[str, object] = {}
-        existing_id = getattr(entity, "id", None)
-        # An add with an existing id is an update-in-place (the SQL repo overwrites
-        # the row via the PK); otherwise allocate a new id.
-        table = self._store.table(self._entity_type)
-        if existing_id is not None and existing_id in table:
-            assigned = cast(int, existing_id)
-        else:
-            assigned = self._store.allocate_id()
+        assigned = self._store.allocate_id()
         updates["id"] = assigned
         if _CREATED_FIELD in fields and getattr(entity, _CREATED_FIELD, None) is None:
             updates[_CREATED_FIELD] = now
         if _UPDATED_FIELD in fields and getattr(entity, _UPDATED_FIELD, None) is None:
             updates[_UPDATED_FIELD] = now
         saved = entity.model_copy(update=updates)
-        table[assigned] = saved
+        self._store.table(self._entity_type)[assigned] = saved
+        return saved
+
+    def update(self, entity: EntityT) -> EntityT:
+        """UPDATE the row identified by ``entity.id`` in place; re-stamp ``updated_at``.
+
+        Mirrors ``SqlModelRepository.update``: never inserts. Raises ``ValueError``
+        if the id is ``None`` and ``KeyError`` if no such row exists. ``created_at``
+        is preserved (the entity's value wins); ``updated_at`` is re-stamped.
+        """
+        entity_id = getattr(entity, "id", None)
+        if entity_id is None:
+            raise ValueError(f"cannot update a {self._entity_type.__name__} with no id (use add to insert)")
+        table = self._store.table(self._entity_type)
+        if entity_id not in table:
+            raise KeyError(f"no {self._entity_type.__name__} with id {entity_id} to update")
+        updates: dict[str, object] = {}
+        if _UPDATED_FIELD in set(self._entity_type.model_fields):
+            updates[_UPDATED_FIELD] = self._clock.now()
+        saved = entity.model_copy(update=updates) if updates else entity
+        table[cast(int, entity_id)] = saved
         return saved
 
     def get(self, entity_id: int) -> EntityT | None:

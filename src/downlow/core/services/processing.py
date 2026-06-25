@@ -37,7 +37,7 @@ from downlow.config.profiles import DownLowConfig
 from downlow.core.stages.ingest import IngestStage
 from downlow.core.stages.narrate import NarrateStage
 from downlow.core.stages.render import RenderStage
-from downlow.core.stages.store import StoreStage
+from downlow.core.stages.store import StoreStage, require_id
 from downlow.core.stages.summarise import SummariseStage
 from downlow.domain.entities import Paper, PipelineRun, StageRun, Summary
 from downlow.domain.enums import RunStatus, StageStatus
@@ -156,8 +156,7 @@ class ProcessingService:
         # paper). We upsert it now from the source hash; INGEST/F5 backfill its
         # title/metadata at STORE time.
         paper = self._store.upsert_paper(user_id=user_id, source_hash=source_hash, title=pdf_path.stem)
-        assert paper.id is not None  # the store assigns the id on upsert
-        paper_id = paper.id
+        paper_id = require_id(paper, "Paper")  # the store assigns the id on upsert
 
         prior = set() if force else self._latest_succeeded_stages(paper_id)
         run = self._start_run(paper_id)
@@ -187,8 +186,13 @@ class ProcessingService:
         )
 
     def _finish_run(self, run: PipelineRun, status: RunStatus, *, error: str | None = None) -> PipelineRun:
-        """Flip the run to its terminal status with the finish timestamp."""
-        return self._runs.add(
+        """Flip the run to its terminal status IN PLACE (update, not a second insert).
+
+        ``add`` is insert-only, so flipping the run via ``add`` would duplicate the
+        PipelineRun row (B3). The run was created in RUNNING with an assigned id;
+        ``update`` mutates that row's status/error/finished_at in place.
+        """
+        return self._runs.update(
             run.model_copy(update={"id": run.id, "status": status, "error": error, "finished_at": self._now()})
         )
 
@@ -225,19 +229,30 @@ class ProcessingService:
         """The stage names the most recent prior run SUCCEEDED (for resume).
 
         Resume basis: a re-run replays the stages the latest run already succeeded
-        and resumes at the first it did not. We take only the *latest* run's stage
-        set (not the union across all history) so a re-run after deliberately failing
-        an earlier stage re-attempts it. A SKIPPED stage counts as
+        and resumes at the first it did not. We take only the *latest* prior run's
+        stage set (not the union across all history) so a re-run after deliberately
+        failing an earlier stage re-attempts it.
+
+        Robust to multiple StageRun rows for one stage_name within a run (a stage that
+        recorded RUNNING then SUCCEEDED/FAILED has several rows): the **latest row by
+        id** for each stage_name wins, so a stage's final status -- not an earlier
+        transition -- decides whether it is replayable. A SKIPPED stage counts as
         succeeded-equivalent (its output was reused), so it is replayable.
         """
         runs = self._runs.list(paper_id=paper_id)
         if not runs:
             return set()
-        latest = max(runs, key=lambda r: r.id or 0)
-        if latest.id is None:
+        latest_run = max(runs, key=lambda r: r.id or 0)
+        if latest_run.id is None:
             return set()
+
+        # Reduce to the final status per stage_name (latest StageRun row by id wins).
+        final_status: dict[str, StageStatus] = {}
+        for sr in sorted(self._stage_runs.list(run_id=latest_run.id), key=lambda s: s.id or 0):
+            final_status[sr.stage_name] = sr.status
+
         done = {StageStatus.SUCCEEDED, StageStatus.SKIPPED}
-        return {sr.stage_name for sr in self._stage_runs.list(run_id=latest.id) if sr.status in done}
+        return {name for name, status in final_status.items() if status in done}
 
     def _existing_summary(self, paper_id: int, content_hash: str) -> Summary | None:
         """The persisted Summary for this paper at ``content_hash``, or ``None``.
@@ -310,8 +325,7 @@ class _RunExecution:
 
     @property
     def _run_id(self) -> int:
-        assert self._run.id is not None  # created in RUNNING with an assigned id
-        return self._run.id
+        return require_id(self._run, "PipelineRun")  # created in RUNNING with an assigned id
 
     def execute(self) -> ProcessResult:
         """Run the compute stages then the terminal STORE; FAIL on the first error.
@@ -447,13 +461,13 @@ class _RunExecution:
         :class:`ReportAsset` is **upserted immediately**, and SUCCEEDED recorded.
         """
         started = self._stage_started = self._svc._now()
-        assert self._summary is not None  # SUMMARISE ran before RENDER
+        summary = self._require_summary(RENDER)  # SUMMARISE ran before RENDER
         if self._can_skip(RENDER) and self._svc._existing_report(self._paper_id) is not None:
             self._svc._record_stage(self._run_id, RENDER, StageStatus.SKIPPED, cache_hit=True, started_at=started)
             return
 
         self._svc._record_stage(self._run_id, RENDER, StageStatus.RUNNING, started_at=started)
-        result = self._svc._render.run([self._summary], self._cfg.report, force=self._force)
+        result = self._svc._render.run([summary], self._cfg.report, force=self._force)
         stored = self._svc._store.upsert_report(
             self._paper_id,
             pdf_ref=result.ref,
@@ -482,12 +496,12 @@ class _RunExecution:
             self._svc._record_stage(self._run_id, NARRATE, StageStatus.SKIPPED, cache_hit=True, started_at=started)
             return
 
-        assert self._summary is not None  # SUMMARISE ran before NARRATE
+        summary = self._require_summary(NARRATE)  # SUMMARISE ran before NARRATE
         self._svc._record_stage(self._run_id, NARRATE, StageStatus.RUNNING, started_at=started)
-        script = self._svc._narrate.generate_script(
-            self._pdf, self._cfg.narration, summary=self._summary, force=self._force
-        )
-        mp3 = self._svc._narrate.run(self._pdf, self._cfg.narration, summary=self._summary, force=self._force)
+        # Generate the script ONCE (its provenance is what STORE persists), then render
+        # the audio from that same script -- never regenerate it inside run() (N1).
+        script = self._svc._narrate.generate_script(self._pdf, self._cfg.narration, summary=summary, force=self._force)
+        mp3 = self._svc._narrate.render_episode(script, self._cfg.narration, force=self._force)
         self._script = script
         self._mp3 = mp3
         self._svc._store.upsert_episode_podcast(
@@ -529,6 +543,17 @@ class _RunExecution:
 
     def _prior_has(self, stage_name: str) -> bool:
         return stage_name in self._prior
+
+    def _require_summary(self, stage_name: str) -> PaperSummary:
+        """The summary SUMMARISE produced/replayed, or raise (an ordering invariant).
+
+        A real raise (not an ``assert``, stripped under ``python -O``) for the
+        invariant that SUMMARISE runs before RENDER/NARRATE and always leaves a
+        summary. ``None`` here is a broken pipeline ordering, not a recoverable state.
+        """
+        if self._summary is None:
+            raise RuntimeError(f"{stage_name} reached before SUMMARISE produced a summary (pipeline ordering broken)")
+        return self._summary
 
     def _summary_input_hash(self) -> str:
         """The summary's cache-skip input hash.

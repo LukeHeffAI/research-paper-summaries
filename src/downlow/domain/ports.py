@@ -339,10 +339,18 @@ class Repository(Protocol[EntityT]):
 
     Contract:
 
-    * :meth:`add` -- persist ``entity`` and return it with its store-assigned ``id``
-      (and timestamps) populated. Idempotency of *content* is the caller's concern
-      (e.g. an upsert keyed on a content hash is a service/adapter detail); ``add``
-      itself inserts.
+    * :meth:`add` -- INSERT ``entity`` and return it with its store-assigned ``id``
+      (and timestamps) populated. ``add`` is insert-only: it ALWAYS allocates a fresh
+      ``id`` and ignores any caller-supplied one (so a content-level re-save is never
+      a silent update -- use :meth:`update` for that). Idempotency of *content* is the
+      caller's concern (an upsert keyed on a content hash is a service detail:
+      find-by-key, then :meth:`add` if absent or :meth:`update` if present).
+    * :meth:`update` -- UPDATE the existing row identified by ``entity.id`` in place,
+      returning it with ``updated_at`` re-stamped from the injected clock. Raises
+      :class:`ValueError` if ``entity.id`` is ``None`` or :class:`KeyError` if no row
+      with that id exists -- update never silently inserts (the mirror of ``add``
+      never silently updating). This is the verb a service uses to flip a row's
+      status (a run's terminal state) or backfill a learned field (a paper's title).
     * :meth:`get` -- return the entity with primary key ``entity_id``, or ``None``
       when it does not exist (never raises for a miss).
     * :meth:`list` -- return all entities, optionally narrowed by simple equality
@@ -353,7 +361,14 @@ class Repository(Protocol[EntityT]):
     """
 
     def add(self, entity: EntityT) -> EntityT:
-        """Persist ``entity``; return it with ``id`` / timestamps populated."""
+        """INSERT ``entity`` (fresh id always); return it with ``id`` / timestamps."""
+        ...
+
+    def update(self, entity: EntityT) -> EntityT:
+        """UPDATE the row identified by ``entity.id`` in place; re-stamp ``updated_at``.
+
+        Raises ``ValueError`` if ``entity.id`` is ``None``, ``KeyError`` if absent.
+        """
         ...
 
     def get(self, entity_id: int) -> EntityT | None:
