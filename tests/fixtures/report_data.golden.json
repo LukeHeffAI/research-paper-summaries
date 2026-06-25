@@ -1,0 +1,58 @@
+{
+  "meta": {
+    "template_version": "report-v1",
+    "title": "Research Summaries"
+  },
+  "summaries": [
+    {
+      "contributions": [
+        "A controlled comparison of pretraining objectives.",
+        "A released evaluation suite."
+      ],
+      "gaps_and_limitations": [
+        "Classification only.",
+        "Pretraining compute is not held constant."
+      ],
+      "input_hash": "content-hash-1",
+      "key_findings": [
+        {
+          "evidence": "+6.1 average accuracy points across five held-out domains",
+          "statement": "Contrastive beats supervised on zero-shot transfer."
+        },
+        {
+          "evidence": null,
+          "statement": "The medical-scan confidence is poorly calibrated."
+        }
+      ],
+      "methods": "Two equal-parameter models pretrained on the same corpus, evaluated zero-shot.",
+      "model": "",
+      "overall_summary": "A controlled study of whether a contrastive objective lets a model generalise to unseen domains. The gains grow with the domain shift.",
+      "profile_hash": "",
+      "prompt_version": "",
+      "relevance_to_profile": "Bears directly on cross-domain generalisation.",
+      "title": "Contrastive Pretraining Improves Zero-Shot Cross-Domain Transfer"
+    },
+    {
+      "contributions": [
+        "Demonstrates 1..N papers in one report."
+      ],
+      "gaps_and_limitations": [
+        "Illustrative only."
+      ],
+      "input_hash": "content-hash-2",
+      "key_findings": [
+        {
+          "evidence": "two sections rendered",
+          "statement": "Merging works."
+        }
+      ],
+      "methods": "N/A.",
+      "model": "",
+      "overall_summary": "A short second summary so the golden snapshot covers the multi-paper merge.",
+      "profile_hash": "",
+      "prompt_version": "",
+      "relevance_to_profile": "Exercises the legacy merge-into-one-document behaviour.",
+      "title": "A Second Paper To Prove The Merge"
+    }
+  ]
+}
