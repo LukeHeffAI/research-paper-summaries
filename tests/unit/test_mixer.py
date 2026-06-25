@@ -34,13 +34,34 @@ def _music(cue: str, segment: AudioSegment, *, under: bool) -> tuple[RenderedTur
 
 
 def test_voice_track_positions_advance_playhead() -> None:
-    mixer = PydubAudioMixer()
+    # gap=0 isolates the bare playhead advance (the gap is exercised separately).
+    mixer = PydubAudioMixer(MixConfig(inter_turn_gap_ms=0))
     a = AudioSegment.silent(duration=1000)
     b = AudioSegment.silent(duration=2000)
     timeline = mixer._build_timeline([_speech(a), _speech(b)])
     positions = [e.position_ms for e in timeline.voice]
     assert positions == [0, 1000]
     assert timeline.duration_ms == 3000
+
+
+def test_inter_turn_gap_advances_playhead_between_consecutive_speech() -> None:
+    mixer = PydubAudioMixer(MixConfig(inter_turn_gap_ms=250))
+    a = AudioSegment.silent(duration=1000)
+    b = AudioSegment.silent(duration=2000)
+    timeline = mixer._build_timeline([_speech(a), _speech(b)])
+    # the 250ms gap pushes the second speech turn back, so it is no longer adjacent
+    assert [e.position_ms for e in timeline.voice] == [0, 1250]
+    assert timeline.duration_ms == 3250
+
+
+def test_inter_turn_gap_not_inserted_across_a_pause() -> None:
+    mixer = PydubAudioMixer(MixConfig(inter_turn_gap_ms=250))
+    timeline = mixer._build_timeline(
+        [_speech(AudioSegment.silent(duration=500)), _pause(300), _speech(AudioSegment.silent(duration=500))]
+    )
+    # a pause already separates the speech turns -> no extra gap inserted
+    assert [e.position_ms for e in timeline.voice] == [0, 500, 800]
+    assert timeline.duration_ms == 1300
 
 
 def test_pause_inserts_silence_and_advances() -> None:
@@ -81,16 +102,30 @@ def test_missing_asset_is_skipped() -> None:
     assert timeline.duration_ms == 1000  # the missing cue contributed nothing
 
 
-def test_voice_render_crossfades_consecutive_speech() -> None:
-    mixer = PydubAudioMixer(MixConfig(crossfade_ms=120))
+def test_voice_render_crossfades_adjacent_speech() -> None:
+    # gap=0 so the two speech turns stay adjacent and the crossfade can trigger.
+    mixer = PydubAudioMixer(MixConfig(crossfade_ms=120, inter_turn_gap_ms=0))
     a = AudioSegment.silent(duration=1000)
     b = AudioSegment.silent(duration=1000)
     timeline = mixer._build_timeline([_speech(a), _speech(b)])
+    assert [e.position_ms for e in timeline.voice] == [0, 1000]  # adjacent
     rendered = mixer._render_voice(timeline.voice, timeline.duration_ms)
-    # the crossfade pulls the second clip back by crossfade_ms, so the rendered
-    # voice track is shorter than the naive 2000ms sum by the overlap.
-    assert len(rendered) <= timeline.duration_ms
-    assert len(rendered) == 1000 + (1000 - 120) + 120  # canvas length unchanged
+    # the crossfade pulls the second clip's start back by crossfade_ms; the canvas
+    # length itself is unchanged.
+    assert len(rendered) == timeline.duration_ms == 2000
+
+
+def test_gapped_speech_is_not_crossfaded() -> None:
+    # with a gap, consecutive speech turns are non-adjacent -> no crossfade overlap.
+    mixer = PydubAudioMixer(MixConfig(crossfade_ms=120, inter_turn_gap_ms=250))
+    a = AudioSegment.silent(duration=1000)
+    b = AudioSegment.silent(duration=1000)
+    timeline = mixer._build_timeline([_speech(a), _speech(b)])
+    # second turn starts at 1250 (gapped), not 1000, so the crossfade guard (pos ==
+    # prev_end) is false and nothing is pulled back.
+    assert [e.position_ms for e in timeline.voice] == [0, 1250]
+    rendered = mixer._render_voice(timeline.voice, timeline.duration_ms)
+    assert len(rendered) == timeline.duration_ms == 2250
 
 
 def test_bed_is_attenuated_and_spans_to_end() -> None:

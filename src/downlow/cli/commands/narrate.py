@@ -35,17 +35,20 @@ def narrate(
         typer.echo(f"PDF not found: {pdf}", err=True)
         raise typer.Exit(code=2)
 
+    # Build the DI container once, then reuse its config for the narrate stage so we
+    # do not read Settings + the config file twice (and cannot diverge between them).
     try:
-        stage = build_narrate_stage(research_profile=profile, output_profile=output_profile)
+        container = build_container(research_profile=profile, output_profile=output_profile)
+        stage = build_narrate_stage(settings=container.settings, config=container.config)
     except ValueError as exc:
         typer.echo(str(exc), err=True)
         raise typer.Exit(code=2) from exc
 
+    cfg = container.config
+
     # On the summary script_source, the LLM is fed the prior summary, so produce it
     # first via the summarise stage (which needs only the Anthropic key).
     summary: PaperSummary | None = None
-    container = build_container(research_profile=profile, output_profile=output_profile)
-    cfg = container.config
     if cfg.narration.script_source == "summary":
         try:
             summary = container.summarise.run(pdf, cfg.research_profile, cfg.output_profile, cfg.summary, force=force)

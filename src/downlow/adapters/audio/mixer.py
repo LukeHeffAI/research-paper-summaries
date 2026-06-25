@@ -105,21 +105,31 @@ class PydubAudioMixer:
         (stings) occupy their own time and advance it; ``under`` cues (beds) layer
         underneath and do not advance it. A turn whose segment is ``None`` (a missing
         asset, or speech with no audio) is skipped.
+
+        A configured ``inter_turn_gap_ms`` of silence is inserted between two
+        *consecutive* speech turns (a natural turn-taking beat). Because the gap
+        makes the turns non-adjacent, the crossfade in :meth:`_render_voice` simply
+        will not trigger across a gapped boundary -- the two compose cleanly.
         """
         timeline = _Timeline()
         playhead = 0
+        prev_was_speech = False
         for item, segment in decoded:
             turn = item.turn
             if turn.type == "speech":
                 if segment is None:
                     continue
+                if prev_was_speech and self._mix.inter_turn_gap_ms > 0:
+                    playhead += self._mix.inter_turn_gap_ms
                 timeline.voice.append(_Entry(audio=segment, position_ms=playhead, is_speech=True))
                 playhead += len(segment)
+                prev_was_speech = True
             elif turn.type == "pause":
                 duration = turn.duration_ms or 500
                 silence = AudioSegment.silent(duration=duration)
                 timeline.voice.append(_Entry(audio=silence, position_ms=playhead, is_speech=False))
                 playhead += duration
+                prev_was_speech = False
             elif turn.type in ("music", "sfx"):
                 if segment is None:
                     continue
@@ -128,6 +138,7 @@ class PydubAudioMixer:
                 else:
                     timeline.stings.append(_Entry(audio=segment, position_ms=playhead))
                     playhead += len(segment)
+                    prev_was_speech = False
         timeline.duration_ms = max(playhead, 1)
         return timeline
 

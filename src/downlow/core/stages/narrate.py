@@ -163,7 +163,7 @@ class NarrateStage:
         without driving TTS + mix. Stamps provenance and writes the script sidecar.
         """
         instruction = build_narration_instruction(target_minutes=cfg.target_minutes, script_source=cfg.script_source)
-        input_hash = self._source_hash(pdf_path)
+        input_hash = self._key_input_hash(pdf_path, cfg, summary=summary)
         cache_path = self._script_cache_path(self._script_cache_key(input_hash=input_hash, cfg=cfg))
 
         if not force:
@@ -395,6 +395,22 @@ class NarrateStage:
         return path
 
     # --- cache keys + hashes ------------------------------------------------ #
+
+    def _key_input_hash(self, pdf_path: Path, cfg: NarrationConfig, *, summary: PaperSummary | None) -> str:
+        """The cache-key input anchor for the active ``script_source``.
+
+        On the ``summary`` path the script is generated from the *summary*, not the
+        PDF, so the key must track the summary's content -- otherwise a changed
+        upstream summary returns a stale cached script. We hash the serialised
+        summary text (exactly what :meth:`_generate` records as the content hash) so
+        two different summaries yield different keys. On the ``paper`` path the raw
+        PDF source hash anchors the key.
+        """
+        if cfg.script_source == "summary":
+            if summary is None:
+                raise LLMError("script_source is 'summary' but no PaperSummary was provided to NARRATE")
+            return hashlib.sha256(summary_to_document_text(summary).encode("utf-8")).hexdigest()
+        return self._source_hash(pdf_path)
 
     @staticmethod
     def _script_cache_key(*, input_hash: str, cfg: NarrationConfig) -> str:

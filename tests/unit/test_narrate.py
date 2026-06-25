@@ -29,7 +29,7 @@ from downlow.core.stages.narrate import (
     tone_to_preset,
 )
 from downlow.domain.enums import SpeakerRole
-from downlow.domain.errors import LLMError, NarrationQualityError, TruncatedResponseError
+from downlow.domain.errors import LLMError, NarrationQualityError, TruncatedResponseError, TTSError
 from downlow.domain.ports import LLMClient, LLMDocument, TTSClient
 from downlow.domain.schemas import KeyFinding, NarrationScript, PaperSummary, Turn, VoiceRef
 from tests.fakes.audio import FakeAudioMixer
@@ -381,6 +381,35 @@ def test_script_cache_key_changes_with_script_source(tmp_path: Path) -> None:
     assert llm.call_count == 2  # different source -> different key -> miss
 
 
+def test_summary_path_keys_on_summary_content_not_pdf(tmp_path: Path) -> None:
+    # Two DIFFERENT summaries (same PDF) must yield different cache keys, else a
+    # changed upstream summary returns a stale cached script.
+    pdf = _write_pdf(tmp_path)
+    llm = FakeLLMClient(result=_good_script())
+    stage = _stage(tmp_path, llm, FakeTTSClient(), FakeAudioMixer())
+
+    def _summary(overall: str) -> PaperSummary:
+        return PaperSummary(
+            title="A",
+            overall_summary=overall,
+            key_findings=[KeyFinding(statement="s")],
+            contributions=["c"],
+            methods="m",
+            gaps_and_limitations=["g"],
+            relevance_to_profile="r",
+        )
+
+    cfg = _config(script_source="summary")
+    stage.generate_script(pdf, cfg, summary=_summary("first overall summary " * 10))
+    assert llm.call_count == 1
+    # same summary again -> cache hit, no new call
+    stage.generate_script(pdf, cfg, summary=_summary("first overall summary " * 10))
+    assert llm.call_count == 1
+    # a different summary -> different key -> miss (not the stale cached script)
+    stage.generate_script(pdf, cfg, summary=_summary("a completely different summary " * 10))
+    assert llm.call_count == 2
+
+
 def test_corrupt_script_cache_treated_as_miss(tmp_path: Path) -> None:
     pdf = _write_pdf(tmp_path)
     llm = FakeLLMClient(result=_good_script())
@@ -460,6 +489,14 @@ def test_unmapped_voice_role_raises(tmp_path: Path) -> None:
     cfg = _config(voices=[VoiceRef(role=SpeakerRole.HOST, voice_id="h")])
     with pytest.raises(LLMError, match="no voice configured for role 'author'"):
         stage.run(pdf, cfg)
+
+
+def test_tts_failure_propagates_out_of_render(tmp_path: Path) -> None:
+    pdf = _write_pdf(tmp_path)
+    tts = FakeTTSClient(fail_with=TTSError("provider down", status_code=503))
+    stage = _stage(tmp_path, FakeLLMClient(result=_good_script()), tts, FakeAudioMixer())
+    with pytest.raises(TTSError, match="provider down"):
+        stage.run(pdf, _config())
 
 
 # --------------------------------------------------------------------------- #

@@ -87,3 +87,24 @@ The schema (`Turn.type == "sfx"`, `cue`, `under`) and the mixer layers already
 exist, so this is a population + generation-adapter change, not a rewrite.
 
 Source: docs/podcast_design.md section 6 (Music & SFX) + the F4 brief.
+
+---
+
+## Sectioned-narration `_reduce` duplicates structural music turns
+
+`NarrateStage._reduce` (core/stages/narrate.py) merges per-section partial scripts
+by concatenating their `turns`. The required structure (cold-open host turn,
+`music intro`, ... `music outro`) appears in *each* section's partial, so a
+multi-section paper produces an episode with duplicated intro/outro/cold-open
+`music` turns mid-timeline. Rarely fires (Sonnet 4.6 has a 1M context, so almost
+every paper scripts in one call), but the reduce path is wrong when it does.
+
+Fix options:
+- dedupe structural `music` cues in `_reduce` -- keep the first section's cold-open
+  + intro and the last section's outro, drop interior intro/outro turns; or
+- budget/instruct the reduce so only the first section emits the cold open + intro
+  and only the last emits the outro (a per-section prompt variant); or
+- run a final reduce LLM pass that re-stitches the concatenated turns into one
+  coherent arc (mirrors SUMMARISE's reduce, at a token cost).
+
+Sibling to the S4 summarise reduce entry. Source: F4 PR #6 review.
