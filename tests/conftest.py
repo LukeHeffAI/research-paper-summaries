@@ -67,6 +67,25 @@ def _clean_postgres_schema(engine: Engine) -> None:
         connection.execute(text("CREATE SCHEMA public"))
 
 
+@pytest.fixture(scope="session", autouse=True)
+def _require_postgres_when_ci_demands_it() -> None:
+    """Fail loudly if the CI Postgres job is not actually running on Postgres (S2).
+
+    The ``test-postgres`` CI job sets ``DOWNLOW_REQUIRE_POSTGRES=1``. When that flag
+    is present this guard asserts ``DATABASE_URL`` genuinely resolves to a
+    ``postgresql`` backend, so a future env regression (a dropped/typo'd
+    ``DATABASE_URL``) cannot let the job silently fall back to SQLite and pass a
+    hollow "Postgres" proof. The flag is unset locally, so this never trips a
+    developer's SQLite run.
+    """
+    if os.environ.get("DOWNLOW_REQUIRE_POSTGRES", "").strip() not in {"", "0", "false"}:
+        url = _env_database_url()
+        assert url is not None and _is_postgres(url), (
+            "DOWNLOW_REQUIRE_POSTGRES is set (CI Postgres job) but DATABASE_URL does not "
+            f"resolve to postgresql (got {url!r}); refusing to pass a hollow Postgres proof."
+        )
+
+
 @pytest.fixture
 def settings() -> Settings:
     """A Settings instance with defaults and no real credentials."""

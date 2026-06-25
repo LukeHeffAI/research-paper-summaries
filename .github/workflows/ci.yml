@@ -81,11 +81,14 @@ jobs:
   # Postgres, then (b) runs the DATABASE_URL-driven DB + integration tests against
   # it. The SQLite `test` job above still runs every test on SQLite; this job
   # proves portability without a local Postgres (it is CI-only). psycopg3 comes
-  # from the `postgres` extra; ffmpeg/typst are installed for the integration tests.
+  # from the `postgres` extra. No ffmpeg/typst here: the selected tests use the
+  # FakeReportRenderer / FakeAudioMixer (no real binaries). DOWNLOW_REQUIRE_POSTGRES
+  # makes the suite ABORT if DATABASE_URL is ever not Postgres (no hollow proof).
   test-postgres:
     runs-on: ubuntu-latest
     env:
       DATABASE_URL: postgresql+psycopg://downlow:downlow@localhost:5432/downlow_test
+      DOWNLOW_REQUIRE_POSTGRES: "1"
     services:
       postgres:
         image: postgres:16
@@ -106,12 +109,6 @@ jobs:
         with:
           enable-cache: true
       - run: uv sync --frozen --extra dev --extra postgres
-      - name: Install ffmpeg (NARRATE audio integration tests)
-        run: sudo apt-get update && sudo apt-get install -y ffmpeg
-      - name: Install typst (RENDER report integration tests)
-        uses: typst-community/setup-typst@v4
-        with:
-          typst-version: "0.13.1"
       - name: Upgrade head builds the schema on Postgres
         run: uv run alembic upgrade head
       - name: Models and migrations agree on Postgres (no drift)
