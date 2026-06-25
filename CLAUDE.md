@@ -35,7 +35,9 @@ Before planning, designing, or implementing in a matching domain, invoke the rel
 | Significant refactor, architecture migration, or restructuring across modules | `systems-architect` | Agent |
 | Any tool / framework / library selection or architecture decision | `modern-stack-advisor` | Agent |
 | Summarisation quality, research framing, lit-review structure, summary or podcast **content** | `academic-writing-advisor` | Agent |
-| Any frontend / UI / visual design / brand / design system / landing page | `deeptech-brand-architect` | Agent |
+| Frontend code: React 19 / Vite / TS / Tailwind components, hooks, routing, the persistent player, wiring the UI to the API | `frontend-engineer` | Agent |
+| UX / interaction / usability / information architecture / user flows / onboarding copy | `ux-design-advisor` | Agent |
+| Visual identity / design system / brand / palette / typography / motion / landing page | `deeptech-brand-architect` | Agent |
 | PR review requested | `pr-reviewer` | Skill |
 | A GitHub issue to solve | `issue-solver` | Skill |
 | Git history search beyond a simple `git log` | `git-detective` | Skill |
